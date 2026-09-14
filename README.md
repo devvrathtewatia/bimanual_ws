@@ -106,8 +106,3 @@ sync (shoulder at x 0.095, y ±0.08875, z 0.18; L1 = L2 = 0.16; grasp point
 - Masses/inertias/limits are placeholders consistent with Dynamixel
   XM-class servos (±150° yaw, ±115° pitch, 4–6 N·m efforts).
 
-
-```bash
-cd src/kobuki_bimanual_behavior
-python3 test/test_ik.py      # FK/IK round-trip + full choreography check
-```
