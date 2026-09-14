@@ -106,20 +106,6 @@ sync (shoulder at x 0.095, y ±0.08875, z 0.18; L1 = L2 = 0.16; grasp point
 - Masses/inertias/limits are placeholders consistent with Dynamixel
   XM-class servos (±150° yaw, ±115° pitch, 4–6 N·m efforts).
 
-## Troubleshooting
-
-- **No camera images / `ros2 topic hz /camera` silent:** check gz-side names
-  with `gz topic -l`; if the image is not on `/camera`, adjust the bridge
-  arguments in `sim.launch.py` accordingly.
-- **Three `DetachableJoint` errors in single-object worlds:** expected —
-  plugins for absent objects log an error and stay inert.
-- **Controllers fail to spawn:** confirm `gz_ros2_control` installed;
-  `ros2 control list_controllers` should show 4 active controllers.
-- **Black/empty Gazebo window on VMs:** try `export LIBGL_ALWAYS_SOFTWARE=1`.
-- **Objects twitch when grasped:** increase finger `close` value slightly
-  (less squeeze) — the detachable joint carries the object, not friction.
-
-## Verifying the math without Gazebo
 
 ```bash
 cd src/kobuki_bimanual_behavior
