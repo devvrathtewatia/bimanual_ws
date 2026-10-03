@@ -29,7 +29,18 @@ the arms and hands that pick things up and move them
 The robot's job: find everyday objects lying on their sides in a room, drive to each one, pick it up with both hands, rotate it in mid-air, and stand it upright.
 
 It runs in simulation on ROS 2 Jazzy + Gazebo Harmonic. Everything here works in the simulator. The mass, torque and cost numbers describe a real build that has not been built yet.
+## Simulation demos
 
+The final system was tested in ROS 2 Jazzy + Gazebo Harmonic. These short clips show the four working parts of the system.
+
+| Demo | What it shows |
+|---|---|
+| [Pick & Place](media/pick-place-7dof_demo.mp4) | Bimanual grasp, lift, carry and placement |
+| [7DOF Reorientation](media/reorient-7dof_demo.mp4) | Bimanual 90° object flip using the final 7DOF arms |
+| [Perception](media/perceive-7dof_demo.mp4) | Detecting object orientation and identifying standing/lying objects |
+| [Navigation](media/navigate-7dof_demo.mp4) | Driving to objects, standing them up and rescanning the room |
+
+> These are simulation recordings from the final 7DOF implementation.
 The idea in one picture
 
    LOOK            DRIVE            GRIP             TURN            STAND
