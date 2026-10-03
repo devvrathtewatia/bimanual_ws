@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<!--
+  SECTION A world. The robot spawns at the origin facing +x and never
+  translates - it only rotates in place.
+
+  LAYOUT (radius 0.30 m from the base centre, which is the verified sweet spot
+  of the bimanual reach envelope):
+
+        objects            azimuth      world (x, y)
+          bottle              0 deg     ( 0.300,  0.000)
+          can              +55 deg     ( 0.172,  0.246)
+          box               -55 deg     ( 0.172, -0.246)
+
+        shelf: three pedestals on an arc, TOPS AT z = 0.100 (was 0.170)
+          slot: bottle    130 deg       (-0.193, +0.230)
+          slot: can      180 deg       (-0.300,  0.000)
+          slot: box       230 deg       (-0.193, -0.230)
+
+  Every object lies with its long axis TANGENTIAL to its radius, i.e. across
+  the robot's reach direction. That is what lets each arm take one end of the
+  object while staying on its own side of the centreline. rpy = (pi/2, 0, az)
+  achieves it: the pi/2 roll lays the long axis horizontal, and the yaw makes
+  it tangential.
+
+  Objects are 55 deg apart so an arm reaching one cannot touch another.
+-->
+<sdf version="1.9">
+  <world name="pick_place">
+
+    <physics name="step" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-forcetorque-system"
+            name="gz::sim::systems::ForceTorque"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.2 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="col">
+          <geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="vis">
+          <geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.85 0.85 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- shelf: slab centred behind the robot, spanning the three slots -->
+    <include>
+      <uri>model://shelf</uri>
+      <name>shelf</name>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
+
+    <!-- TWO objects, each lying at a DIFFERENT axis angle, neither tangential.
+         The roll of 1.5708 lays the body down; a cylinder's axis is +z by default so
+         a 90 deg roll puts it along -y, which means the axis angle in the world is
+         (spawn yaw - 90 deg). So spawn yaw 162 gives a 72 deg axis and spawn yaw 143
+         gives 53 deg. Each object is grasped at that angle, measured, rather than the
+         base being rotated until the axis happens to be tangential - see the config.
+         The can is deliberately absent: the shelf still has three slots, and it gets
+         added back once two objects work. -->
+    <include>
+      <uri>model://bottle</uri>
+      <name>bottle</name>
+      <pose>0.300 0.000 0.045 1.5708 0 2.8274</pose>
+    </include>
+    <include>
+      <uri>model://can</uri>
+      <name>can</name>
+      <pose>0.172 0.246 0.045 1.5708 0 4.2062</pose>
+    </include>
+    <include>
+      <uri>model://box</uri>
+      <name>box</name>
+      <pose>0.172 -0.246 0.045 1.5708 0 2.4958</pose>
+    </include>
+
+  </world>
+</sdf>

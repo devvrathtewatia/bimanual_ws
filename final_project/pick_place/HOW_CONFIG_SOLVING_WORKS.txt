@@ -1,0 +1,182 @@
+How We Prove a Motion Is Possible, Without Running the Simulator
+
+In one sentence: before launching Gazebo, we write the motion down as a list of hand poses, ask the arm's maths "can you reach this?" at every step, and only trust the design if the answer is yes, every time.
+
+This is the method that:
+
+showed a 4-joint arm can never do the flip,
+showed a 6-joint arm can, and
+found the exact joint limit and shoulder position that made all 36 test cases work.
+
+It needs no ROS and no Gazebo. It runs in about a second.
+
+Contents
+The big idea
+What is a "configuration"?
+How the motion is written down
+The maths being tested (inverse kinematics)
+When it fails, ask the arm what it needed
+How the shoulder position was chosen
+Why this became a permanent test
+What this method cannot tell you
+Update: what changed with the 7th joint
+Words you will meet
+word	plain meaning
+DOF (degrees of freedom)	one independent way the arm can move, like one hinge or one twist
+IK (inverse kinematics)	"I want the hand there. What should each joint be?"
+FK (forward kinematics)	the opposite: "the joints are set like this. Where is the hand?"
+Wrist centre	the point where the three wrist axes cross
+Reach	how far in front of the robot the object is held
+1. The big idea
+
+A motion is only possible if every single instant of it is possible. So instead of launching a simulation and watching what happens, we:
+
+Write the motion down as a continuous sequence of required hand poses.
+Sample it finely, every few degrees.
+Run IK at each sample.
+Call the motion feasible only if every sample solves inside the joint limits.
+
+If any sample fails, we learn three things at once: the exact instant it failed, which joint failed, and by how much.
+
+That turns a vague complaint into a statement you can act on:
+
+before	after
+"the arm looks wrong in the video"	"wrist pitch needs 128° but the limit is 120° at the 70° point of the flip"
+2. What is a "configuration"?
+
+For the flip there are three design numbers we are free to choose:
+
+name	what it is	range tested
+reach	how far in front of the base the object is held	0.24 to 0.30 m
+s	half the grip separation along the object's axis	0.035 to 0.07 m
+liftZ	how high the object's centre is during the flip	0.22 to 0.30 m
+
+We test the full grid: 4 reaches × 3 grips × 3 heights = 36 configurations.
+
+Each configuration is a whole 90° flip, sampled at 37 points, for both arms. So one sweep is:
+
+36 configurations × 37 samples × 2 arms = 2,664 IK solves   →  about one second
+
+Why a grid instead of one case? A grid shows not only whether the design works but how much margin it has. A design that solves at only one exact reach is fragile. One that solves across the whole grid can survive the small errors a real robot always has.
+
+3. How the motion is written down
+
+The two hands hold the object's two ends rigidly. So the hands are not free: their poses are completely decided by how the object moves.
+
+If the object rotates by angle θ about a horizontal axis through its own centre:
+
+hand position(θ) = centre + Rx(θ) · (start position − centre)
+hand rotation(θ) = Rx(θ) · start rotation
+
+This is the entire definition of a rigid grip: position and orientation both follow the object.
+
+Most early trouble in this project came from checking only positions and forgetting that the orientation must follow too.
+
+What the flip looks like:
+
+θ	the object	the hands
+0°	lying down, long axis pointing left-right	on its two ends, pointing down
+90°	standing upright	two ends stacked vertically, so the hands are forced close together
+
+That last row is exactly why the flip is the hard part: the hands converge.
+
+4. The maths being tested (inverse kinematics)
+
+For a 6-DOF arm whose last three axes meet at one point (a "spherical wrist"), IK splits cleanly into two halves. This is why six joints cost almost nothing extra in software.
+
+STEP 1  Find the wrist centre.
+        wrist centre = grasp point − (gripper length) × (approach direction)
+        One subtraction.
+
+STEP 2  Solve joints 1-3 so the wrist centre lands in the right place.
+        J1 = atan2 of the sideways offset
+        J2, J3 from the cosine rule on the two-link arm
+        Two answers exist (elbow up / elbow down). Prefer elbow up.
+
+STEP 3  Solve joints 4-6 for the leftover rotation.
+        Take the rotation the first three joints already made,
+        subtract it from the rotation we need, and read off
+        the rest as three angles: roll, pitch, roll.
+        Two equivalent answers exist; take whichever fits the limits.
+
+STEP 4  Reject if anything is out of range:
+        any joint beyond its limit, or the wrist centre
+        farther than 0.32 m (arm fully stretched)
+        or closer than 0.096 m (elbow cannot fold that far).
+
+No numerical solver. No iteration. No "close enough". Every solve is exact arithmetic, so a failure is a real geometric impossibility, never a solver giving up.
+
+5. When it fails, ask the arm what it needed
+
+When a sample fails, run IK again with the limits switched off and print what the joints would have needed to be. This is the real table that decided the design:
+
+ flip    J1 yaw  J2 shoulder  J3 elbow  J4 roll  J5 wrist pitch  J6 roll
+   0°      -22        -66         86        0          70           68
+  30°      -31        -61         73       25          94           57
+  60°      -40        -51         60       49         118           59
+  70°      -42        -46         56       58        *124           63
+  90°      -45         11        -49      122        *124          138
+                                                        ▲
+                                                 the limit was 120°
+
+Every joint sat comfortably in range except the wrist pitch, which needed 124 to 128°. Nothing else was even close.
+
+So the whole 4-joint-to-6-joint question came down to one number. The fix: give the wrist pitch a range of ±140°, which is ordinary for a real wrist.
+
+The habit worth keeping: don't tune blindly. Ask the arm what it needed, and it tells you.
+
+6. How the shoulder position was chosen
+
+After raising the wrist limit, 30 of 36 configurations solved. The remaining 6 all failed with the same message:
+
+wrist centre 0.320 m   against a 0.32 m arm
+
+That is a reach problem, not a joint problem. Reach is fixed by the link lengths, so the shoulder had to move instead.
+
+We swept the shoulder mounting position (forward offset SX, sideways offset SY, height SZ) and re-ran all 36 configurations for each candidate. Any mount that fell outside the 0.1775 m deck was rejected.
+
+SX	SY	SZ	distance from base centre	configs solving	
+0.06	0.13	0.24	0.143	30	
+0.06	0.13	0.26	0.143	32	
+0.08	0.12	0.24	0.144	36	chosen
+0.10	0.13	0.24	0.164	36	works, but only 14 mm from the edge
+0.12	0.13	0.24	0.177	36	too close to the deck edge
+
+Why that row won:
+
+all 36 configurations solve,
+the mount sits 33 mm inside the deck edge, so a servo bracket physically fits,
+the shoulder stays low, so the robot's centre of mass does not rise.
+
+What this replaced: change a number, launch the simulator, watch a video, guess. That loop took about half an hour per attempt and gave an ambiguous answer. This sweep tested 32 candidate robots against 1,152 complete flips in a few seconds and gave one exact answer.
+
+7. Why this became a permanent test
+
+The sweep was kept as a regression test instead of being thrown away. If anyone later edits a link length, a joint limit or a mount position, the test fails immediately and names the configuration that broke.
+
+Without it, the same edit would show up days later as an arm behaving oddly in a video, with no obvious cause. That was the failure pattern this project had before.
+
+The rule the whole approach rests on:
+
+Any geometric claim about the robot should be provable without launching the simulator. The simulator is for testing physics, contact and control. It is not for discovering that an arm cannot reach.
+
+8. What this method cannot tell you
+
+It has limits, and it is better to say so plainly.
+
+it does not check	why that matters	where it is checked instead
+Collisions	two arms can each be reachable and still occupy the same space	the collision checker (collision.py) models every link and tests it against the other arm, floor, base and mast
+Dynamics	whether a joint has enough torque, whether the controller can follow the motion, whether the base tips	the simulator, and the mass budget
+Perception error	it assumes the object is exactly where the model says	margin built into the design, and the vision checks
+
+So this is a necessary condition, not a sufficient one. But it is the cheapest and sharpest filter available, and every failure it catches is one that would otherwise have cost a full simulation cycle to find.
+
+9. Update: what changed with the 7th joint
+
+Everything above describes the 6-DOF arm. The final robot has 7 joints per arm, and the same philosophy carried over with two changes.
+
+The solver stayed closed-form. With a seventh joint, the elbow can sit anywhere on a circle for a given hand pose. Instead of searching for the best elbow position inside the solve, the elbow angle (called ψ, "psi") became an input. The solver is still exact arithmetic. Setting ψ = 0 reproduces the old 6-DOF answer exactly, and a test pins that.
+
+Choosing ψ became its own planning problem. A good ψ at one waypoint must also be a good neighbour of the ψ at the next one. The answer is a path search (dynamic programming) over the whole motion, which keeps the elbow moving smoothly instead of lurching.
+
+The full story, including the three approaches that failed first, is in ../reorientation/DESIGN_7DOF.md.

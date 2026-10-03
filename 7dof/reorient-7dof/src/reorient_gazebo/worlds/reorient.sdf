@@ -1,0 +1,108 @@
+<?xml version="1.0"?>
+<!--
+  SECTION B world. The robot spawns at the origin facing +x and only ever
+  rotates in place. There is NO shelf: each object is stood upright where it
+  lies, which isolates the reorientation capability.
+
+  Objects sit at radius 0.26 m - the verified sweet spot from the 36-config
+  sweep; 0.30 m runs out of reach part-way through the flip. Each lies with its
+  long axis TANGENTIAL to its radius, so once the robot faces it the axis is
+  lateral and each arm takes one end without crossing the centreline.
+  rpy = (pi/2, 0, azimuth) produces exactly that.
+
+  Azimuths are 55 deg apart so an arm working on one object cannot touch another.
+-->
+<sdf version="1.9">
+  <world name="reorient">
+
+    <physics name="step" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-forcetorque-system"
+            name="gz::sim::systems::ForceTorque"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.2 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="col">
+          <geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="vis">
+          <geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.85 0.85 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+
+    <!-- THE LiDAR POSE REFERENCE. Two perpendicular walls forming an L.
+         This section rotates the base to face each object and then grasps at an angle
+         it ASSUMES, so odometry drift went straight into the grasp - and in this
+         section that is worse than in pick-place. The flip rotates the object about the
+         axis perpendicular to its own; get that axis wrong by d degrees and the object
+         ends up tilted d degrees out of plane rather than upright. Axis error converts
+         DIRECTLY into final tilt, which is why the tilt tolerance had to be 20 degrees
+         to pass at all.
+         One flat wall fixes heading and the distance to it, but not the coordinate
+         parallel to it. Two make the full pose observable.
+         THE FACES, NOT THE CENTRES, ARE WHAT wall_ref.py MUST MATCH. Each wall is a
+         20 mm box centred at -0.46, so the surface the beams hit is at -0.45, and that
+         is WALL_A_X / WALL_B_Y. They used to be 0.46 (the centres), which biased every
+         pose fix by 10 mm in x and y and put every grasp off the object's axis.
+         test_the_wall_constants_are_the_faces_in_the_world reads this file to check.
+         The LiDAR sits at z=0.68 and the objects are at most 0.24 m tall, so the walls
+         are the only thing it can see - which is what makes the line fit clean. -->
+    <model name="walls">
+      <static>true</static>
+      <link name="link">
+        <!-- WALL HEIGHT 0.90, was 0.60. The LiDAR moved up to z=0.68 to get clear of the
+           robot's own arms (which reach 0.610 and were being scanned as if they were
+           wall), so the walls have to be taller than the sensor or it sees nothing at
+           all. 0.90 leaves 0.22 m above the beam. -->
+          <collision name="backwall"><pose>-0.46 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.02 0.90 0.90</size></box></geometry></collision>
+        <visual name="backwallv"><pose>-0.46 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.02 0.90 0.90</size></box></geometry>
+          <material><ambient>0.62 0.62 0.60 1</ambient>
+            <diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+        <collision name="sidewall"><pose>-0.18 -0.46 0.45 0 0 0</pose>
+          <geometry><box><size>0.56 0.02 0.90</size></box></geometry></collision>
+        <visual name="sidewallv"><pose>-0.18 -0.46 0.45 0 0 0</pose>
+          <geometry><box><size>0.56 0.02 0.90</size></box></geometry>
+          <material><ambient>0.62 0.62 0.60 1</ambient>
+            <diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+      </link>
+    </model>
+    <include>
+      <uri>model://bottle</uri>
+      <name>bottle</name>
+      <pose>0.300 0.000 0.045 1.5708 0 2.8798</pose>
+    </include>
+    <include>
+      <uri>model://box</uri>
+      <name>box</name>
+      <pose>0.172 -0.246 0.045 1.5708 0 2.4435</pose>
+    </include>
+
+  </world>
+</sdf>

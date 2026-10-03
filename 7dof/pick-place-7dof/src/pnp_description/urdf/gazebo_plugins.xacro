@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="bimanual_gazebo">
+
+    <!-- Differential drive. Section A uses it ONLY for in-place rotation
+         (angular.z); no translation is ever commanded. -->
+    <gazebo>
+      <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+        <left_joint>left_wheel_joint</left_joint>
+        <right_joint>right_wheel_joint</right_joint>
+        <wheel_separation>0.230</wheel_separation>
+        <wheel_radius>0.038</wheel_radius>
+        <topic>/cmd_vel</topic>
+        <odom_topic>/odom</odom_topic>
+        <tf_topic>/tf_gz</tf_topic>
+        <frame_id>odom</frame_id>
+        <child_frame_id>base_footprint</child_frame_id>
+        <odom_publish_frequency>50</odom_publish_frequency>
+        <max_angular_acceleration>1.5</max_angular_acceleration>
+      </plugin>
+    </gazebo>
+
+    <!-- Grasp = a rigid DetachableJoint between the LEFT palm and the object,
+         per the design sheet. Created only after the hands are in position, so
+         it captures the object's true resting pose. -->
+    <xacro:macro name="grasp_joint" params="obj">
+      <gazebo>
+        <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
+          <parent_link>left_palm_link</parent_link>
+          <child_model>${obj}</child_model>
+          <child_link>link</child_link>
+          <!-- WITHOUT THIS THE OBJECT IS WELDED TO THE PALM FROM t=0.
+               DetachableJoint attaches at initialisation by default, so every
+               object started rigidly joined to the gripper: gravity did nothing to
+               them, they hung in mid-air, the later attach call was a no-op, and
+               the weld had already frozen a garbage relative pose. Three objects
+               hanging off one palm also fought the arm controllers, which is where
+               a lot of the jerking came from. -->
+          <suppress_initial_attach>true</suppress_initial_attach>
+          <attach_topic>/grasp/${obj}/attach</attach_topic>
+          <detach_topic>/grasp/${obj}/detach</detach_topic>
+          <output_topic>/grasp/${obj}/state</output_topic>
+        </plugin>
+      </gazebo>
+    </xacro:macro>
+    <xacro:grasp_joint obj="bottle"/>
+    <xacro:grasp_joint obj="can"/>
+    <xacro:grasp_joint obj="box"/>
+
+    <!-- GROUND TRUTH FOR THE ROBOT'S OWN POSE, for CHECKS ONLY - the node never steers
+         by it. Every grasp is aimed from the wall fit, so the only way to see whether the
+         wall fit is right is to compare it with where Gazebo says the base actually is.
+         Without this, a 10 mm localisation bias (the wall constants were the wall centres,
+         not their faces) aimed every grasp off the object and nothing could measure it:
+         a centring check done in the wall-fit frame is biased by exactly the same amount.
+         Same plugin and settings as each object's model.sdf, which is confirmed working;
+         published on /model/pnp_bimanual/pose. -->
+    <gazebo>
+      <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+        <publish_link_pose>false</publish_link_pose>
+        <publish_visual_pose>false</publish_visual_pose>
+        <publish_collision_pose>false</publish_collision_pose>
+        <publish_sensor_pose>false</publish_sensor_pose>
+        <publish_nested_model_pose>false</publish_nested_model_pose>
+        <publish_model_pose>true</publish_model_pose>
+        <use_pose_vector_msg>false</use_pose_vector_msg>
+        <static_publisher>false</static_publisher>
+        <update_frequency>20</update_frequency>
+      </plugin>
+    </gazebo>
+
+    <gazebo>
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(find pnp_description)/config/controllers.yaml</parameters>
+        <position_proportional_gain>1.9</position_proportional_gain>
+      </plugin>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

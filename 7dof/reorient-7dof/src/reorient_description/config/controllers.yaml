@@ -1,0 +1,39 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 200
+    use_sim_time: true
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    left_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    right_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    gripper_controller:
+      type: position_controllers/JointGroupPositionController
+
+left_arm_controller:
+  ros__parameters:
+    joints: [left_j1, left_j2, left_j2b, left_j3, left_j4, left_j5, left_j6]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+    allow_nonzero_velocity_at_trajectory_end: true
+    constraints: {stopped_velocity_tolerance: 0.5, goal_time: 0.0}
+
+right_arm_controller:
+  ros__parameters:
+    joints: [right_j1, right_j2, right_j2b, right_j3, right_j4, right_j5, right_j6]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+    allow_nonzero_velocity_at_trajectory_end: true
+    constraints: {stopped_velocity_tolerance: 0.5, goal_time: 0.0}
+
+gripper_controller:
+  ros__parameters:
+    # four proximal, then four distal. grippers() publishes eight values: the
+    # commanded closure, then the coupled inward curl.
+    joints: [left_finger_l_joint, left_finger_r_joint,
+             right_finger_l_joint, right_finger_r_joint,
+             left_finger_l_tip_joint, left_finger_r_tip_joint,
+             right_finger_l_tip_joint, right_finger_r_tip_joint]

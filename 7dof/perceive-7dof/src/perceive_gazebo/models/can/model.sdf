@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <!-- can: blue can, 90 mm diameter x 200 mm (replaces the old bowl: a bowl is too short and too shallow to grip by its two ends)
+       Sized so that lying on the floor its centre is 0.045 m up. That is a
+       CLEARANCE REQUIREMENT, not decoration: the gripper's fingers reach 0.015 m
+       past the grasp point, so an object whose centre sits lower than about
+       0.037 m forces the fingertips into the ground plane. The earlier 0.030 m
+       objects did exactly that on every grasp. -->
+  <model name="can">
+    <link name="link">
+      <inertial><mass>0.35</mass>
+        <inertia><ixx>1.343854e-03</ixx><iyy>1.343854e-03</iyy><izz>3.543750e-04</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <collision name="col">
+        <geometry><cylinder><radius>0.045</radius><length>0.2</length></cylinder></geometry>
+        <surface>
+          <friction><ode><mu>1.5</mu><mu2>1.5</mu2></ode></friction>
+          <contact><ode><soft_cfm>0.001</soft_cfm><soft_erp>0.2</soft_erp>
+            <kp>1e6</kp><kd>100</kd></ode></contact>
+        </surface>
+      </collision>
+      <visual name="vis">
+        <geometry><cylinder><radius>0.045</radius><length>0.2</length></cylinder></geometry>
+        <material><ambient>0.10 0.35 0.85 1</ambient><diffuse>0.10 0.35 0.85 1</diffuse>
+          <specular>0.3 0.3 0.3 1</specular></material>
+      </visual>
+    </link>
+    <!-- GROUND TRUTH, published by the model itself.
+         Verification was blind for every run so far. The world-level pose stream
+         (/world/<world>/pose/info) was bridged and delivered ZERO messages, and the
+         cause could not be found by inspection: the spec was well formed and the
+         SceneBroadcaster system was loaded. Rather than guess at it again, this is a
+         second, independent path that does not involve the world stream at all.
+         PosePublisher is attached to the model, publishes unconditionally at a fixed
+         rate (it does not wait for a subscriber the way the scene broadcaster does),
+         emits one plain gz.msgs.Pose on /model/<name>/pose, and needs no entity-name
+         matching on the ROS side because there is one topic per object. The old path
+         is still bridged; verify_node takes whichever arrives and says which. -->
+    <plugin filename="gz-sim-pose-publisher-system"
+            name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>false</publish_link_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_sensor_pose>false</publish_sensor_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <!-- the model pose, in the world frame - exactly what verification needs -->
+      <publish_model_pose>true</publish_model_pose>
+      <!-- one plain Pose, not a Pose_V, so the bridge conversion is the simplest one -->
+      <use_pose_vector_msg>false</use_pose_vector_msg>
+      <!-- MUST stay false. The "static" mode only publishes when the pose CHANGES,
+           which is the same trap as dynamic_pose/info: a resting object - the very
+           thing being verified - would never appear. -->
+      <static_publisher>false</static_publisher>
+      <update_frequency>20</update_frequency>
+    </plugin>
+  </model>
+</sdf>

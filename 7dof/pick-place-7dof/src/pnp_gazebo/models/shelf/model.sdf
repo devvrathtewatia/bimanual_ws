@@ -1,0 +1,226 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <!-- Section A shelf: three slots on an arc at radius 0.30 m, tops at z = 0.100,
+       each with a pair of CHAMFERED anti-roll barriers, plus two perpendicular walls
+       the LiDAR uses as an absolute pose reference.
+
+       HEIGHT 0.100, was 0.170 (2026-09-28). Lowered to the height the reorient section is
+       verified to stand objects up on, so the two sections share one platform height and
+       the combined task - pick from the floor, stand it up, place it on the shelf - can use
+       this shelf as it is. Every other dimension below is relative to the top surface and
+       is unchanged; only the heights moved down 70 mm.
+       NOTE ON "PEDESTALS". The three pedestal boxes are 0.32 m long and their centres
+       are 0.2536 m apart, so they OVERLAP: the shelf is one continuous arc-shaped mass,
+       not three islands. Earlier comments here described them as separate, which is
+       wrong and is what made the barrier overhang between slots easy to miss.
+
+       RADIAL WIDTH 0.18, NOT 0.16. At 0.16 the pedestal edge was at radial 0.080
+       and the barricade's lower outer corner was also at 0.0800 - exactly flush, zero
+       margin. That reads visually as the barrier hanging off the rim, and it leaves an
+       object that overshoots the crest nothing to land on but air. At 0.18 there is
+       10 mm of solid shelf outside the barricade. The pedestal now spans radius 0.21 to
+       0.39, still 32 mm clear of the robot's 0.1775 m base and 60 mm clear of the back
+       wall.
+
+       PEDESTALS ON AN ARC, NOT ONE SLAB. The robot has a fixed base and places at a
+       0.30 m reach, so its slots lie on an arc. Objects are placed LYING with their
+       long axis tangential, so adjacent slots need at least 0.25 m between centres -
+       50 deg of azimuth. A single rectangular slab wide enough to carry all three would
+       have to reach x = -0.105, and the robot's base occupies everything inside a
+       0.1775 m radius; it would intersect the robot. Pedestals following the arc do
+       not. Each is 0.32 m along the object and 0.16 m across, giving 80 mm of margin
+       on the longest object - the first version left only 20 mm and any heading error
+       left the object overhanging.
+
+       ======================================================================
+       CHAMFERED ANTI-ROLL BARRIERS - the second attempt, and why this one works
+       ======================================================================
+       A cylinder on a flat top rolls off at the slightest disturbance; in the first
+       run the bottle rolled off the shelf and landed on the robot's own base. So a
+       barrier is needed. The FIRST attempt was a plain rectangular rail, and it
+       created a worse failure than the one it fixed: it presented a horizontal top
+       face with a square edge inside the region the object is lowered into, the object
+       landed on that face instead of the pedestal, and the arm - which lowers to where
+       it believes the surface is - went on pressing a rigid object against a rigid
+       obstruction until the reaction tipped the whole robot onto its casters.
+
+       The lesson was not "no barriers". It was that a barrier must not present any
+       horizontal surface, or any square edge, that a descending object can rest on.
+       So each barrier here is a RAMP: its only exposed surface is a 35 deg chamfer
+       rising away from the slot centre. An object that lands off-centre touches an
+       inclined plane, and an inclined plane converts the arm's downward motion into a
+       sideways push that drives the object into the slot. The failure mode becomes the
+       correction mechanism.
+
+       Every number below is derived, and all of them are re-checked by
+       test_shelf_barriers_are_properly_chamfered in the behaviour test suite.
+
+         chamfer angle   35 deg from horizontal.
+                         Steep enough that the object always slides back DOWN rather
+                         than sticking on the slope: sliding needs mu < tan(35) = 0.70
+                         and the ramp faces are set to mu = 0.30. It is also shallow
+                         enough to give a wide capture mouth for a given crest height,
+                         which a steep chamfer cannot.
+         foot   r=0.056  where the chamfer meets the pedestal surface. The object's
+                         half-width is 0.045, so a correctly placed object sits in an
+                         11 mm gap either side and touches nothing.
+         crest  r=0.0765 3.5 mm inside the pedestal edge at 0.080. The mouth is
+                z=0.1143 therefore 0.0765 - 0.045 = 31.5 mm wider than the object on
+                         each side: any radial placement error up to 31.5 mm is funnelled
+                         in. Measured localisation error is 2.7 mm, so this is a factor
+                         of ten of margin rather than a hopeful guess.
+         height 14.3 mm  Escaping the slot means lifting the object's centre of mass by
+                         the full crest height. For the bottle that is
+                         0.45 x 9.81 x 0.0143 = 63 mJ, while a brisk 0.15 m/s roll
+                         carries only 7.6 mJ - a factor of eight. So the crest can be
+                         this low, and being low is what keeps it clear of the hands.
+         plate  0.025 x  Modelled as a thin plate rotated by -35 deg about the
+                0.300 x  tangential axis. Its lower end is buried 1 mm into the
+                0.006    pedestal so that the chamfer runs into the surface with no
+                         step: a gap there would simply be a new square edge to catch
+                         on, which is the whole failure being fixed. Length 0.300
+                         against the pedestal's 0.320 leaves the ends inset 10 mm.
+
+       LENGTH 0.260, AND THIS IS THE DIMENSION THAT MATTERED MOST. The barriers were
+       0.300 long, which put them 3.6 mm INSIDE the neighbouring slot's landing zone,
+       standing 9.4 mm above the surface. Adjacent slot centres are only 0.2536 m apart
+       (50 deg at a 0.30 m radius), so a barrier running the full length of its own slot
+       necessarily sweeps across its neighbour's. An object lowered into slot 2 would
+       land on slot 1's barrier - and worse than landing on its own, because that
+       barrier's chamfer is oriented for slot 1 and pushes the object the WRONG WAY,
+       away from the slot it is meant to be entering. This was the remaining cause of
+       the arm pressing down on an obstructed object during placement.
+       At 0.260 the nearest above-surface corner clears the neighbouring footprint by
+       11.7 mm while still running 10 mm past each end of the 0.240 m bottle it has to
+       cradle. 0.290 is where intrusion begins, so this is not a dimension to trim.
+       Checked by test_barriers_do_not_reach_into_another_slot, which works in WORLD
+       coordinates - the per-slot chamfer test cannot see this fault, because every
+       quantity it examines is local to one slot.
+
+       WHY THE ENDS NEED NO CHAMFER. The object descends vertically, so the only
+       surfaces it can strike are those with upward-facing area in its footprint. Each
+       barrier's end faces are vertical, 14 mm tall, and lie at radial 0.056 to 0.0765 -
+       entirely outside the object's +/-0.045 footprint. They cannot be landed on. The
+       one surface the object can reach is the chamfer, and that is inclined everywhere.
+
+       WHY THE HANDS NEVER TOUCH THEM. The grasp point sits 0.025 m above the object's
+       centre, 0.170 at the lowest point of a placement, and the fingertips - with the distal
+       phalanx - reach 0.062 below it, to z = 0.108: 6 mm BELOW the 0.1143 crest. So the
+       separation is RADIAL: closed, the fingers' outer faces sit at 0.046 (cylinders, tips
+       curled inward) or 0.054 (the box) from the slot line, inboard of where the chamfer's
+       surface starts (0.060 - the 0.056 foot is its buried lower corner), and when the
+       hands let go they open only to 4 mm off the object (motion.release_closure), outer
+       face at 0.061, where the chamfer is 7 mm below the straight tips. Opened FULLY there,
+       the outer face would be at 0.071 with 0.3 mm to spare - no margin for tracking
+       error - so the hands rise clear first and open fully in the air. The first
+       attempt at barriers was positioned by finger reasoning alone and still failed,
+       because clearing the FINGERS was never the problem - clearing the OBJECT was.
+
+       WHY THE WELD MUST BE RELEASED FIRST. A chamfer can only push an object that is
+       free to move. While the DetachableJoint weld is active the object is rigidly part
+       of the arm and a sideways force just fights the position controller - exactly the
+       tipping failure again. So the placement descends only to 2 mm above the crest,
+       releases the weld there, and only then settles the last 16 mm with the fingers
+       still lightly closed, so the object can slide within the grip and seat itself.
+       See place_waypoints / settle_waypoints in choreography.py.
+
+       FLAT BACK WALL - the absolute heading reference. Section A's base only rotates,
+       about 530 deg over a full run, and wheel slip makes the odometry heading drift
+       over that. That is why the first grasp was clean while later ones were
+       millimetres off, and why objects were placed short of their slot. The LiDAR sits
+       at z = 0.68 and the objects are at most 0.19 m high on the shelf, so these walls are the only
+       thing it can see: fitting a line to the returns gives heading absolutely, with no
+       dependence on how far the robot has turned. Flat rather than curved because a
+       line fit uses every beam and tolerates the mast occluding part of it. -->
+  <model name="shelf">
+    <static>true</static>
+    <link name="link">
+      <!-- ============ slot 1: bottle, azimuth 130 deg ============ -->
+      <collision name="ped1"><pose>-0.1928 0.2298 0.0500 0 0 2.2689</pose>
+        <geometry><box><size>0.18 0.32 0.10</size></box></geometry>
+        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface></collision>
+      <visual name="ped1v"><pose>-0.1928 0.2298 0.0500 0 0 2.2689</pose>
+        <geometry><box><size>0.18 0.32 0.10</size></box></geometry>
+        <material><ambient>0.72 0.72 0.70 1</ambient><diffuse>0.72 0.72 0.70 1</diffuse></material></visual>
+      <!-- chamfered barriers, outer then inner. Low friction so the object slides in. -->
+      <collision name="ramp1o"><pose>-0.2391 0.2849 0.1047 0 -0.6109 2.2689</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <surface><friction><ode><mu>0.30</mu><mu2>0.30</mu2></ode></friction></surface></collision>
+      <visual name="ramp1ov"><pose>-0.2391 0.2849 0.1047 0 -0.6109 2.2689</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <material><ambient>0.55 0.58 0.62 1</ambient><diffuse>0.55 0.58 0.62 1</diffuse></material></visual>
+      <collision name="ramp1i"><pose>-0.1466 0.1747 0.1047 0 0.6109 2.2689</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <surface><friction><ode><mu>0.30</mu><mu2>0.30</mu2></ode></friction></surface></collision>
+      <visual name="ramp1iv"><pose>-0.1466 0.1747 0.1047 0 0.6109 2.2689</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <material><ambient>0.55 0.58 0.62 1</ambient><diffuse>0.55 0.58 0.62 1</diffuse></material></visual>
+
+      <!-- ============ slot 2: can, azimuth 180 deg ============ -->
+      <collision name="ped2"><pose>-0.3000 0.0000 0.0500 0 0 3.1416</pose>
+        <geometry><box><size>0.18 0.32 0.10</size></box></geometry>
+        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface></collision>
+      <visual name="ped2v"><pose>-0.3000 0.0000 0.0500 0 0 3.1416</pose>
+        <geometry><box><size>0.18 0.32 0.10</size></box></geometry>
+        <material><ambient>0.72 0.72 0.70 1</ambient><diffuse>0.72 0.72 0.70 1</diffuse></material></visual>
+      <collision name="ramp2o"><pose>-0.3720 0.0000 0.1047 0 -0.6109 3.1416</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <surface><friction><ode><mu>0.30</mu><mu2>0.30</mu2></ode></friction></surface></collision>
+      <visual name="ramp2ov"><pose>-0.3720 0.0000 0.1047 0 -0.6109 3.1416</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <material><ambient>0.55 0.58 0.62 1</ambient><diffuse>0.55 0.58 0.62 1</diffuse></material></visual>
+      <collision name="ramp2i"><pose>-0.2280 0.0000 0.1047 0 0.6109 3.1416</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <surface><friction><ode><mu>0.30</mu><mu2>0.30</mu2></ode></friction></surface></collision>
+      <visual name="ramp2iv"><pose>-0.2280 0.0000 0.1047 0 0.6109 3.1416</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <material><ambient>0.55 0.58 0.62 1</ambient><diffuse>0.55 0.58 0.62 1</diffuse></material></visual>
+
+      <!-- ============ slot 3: box, azimuth 230 deg ============ -->
+      <collision name="ped3"><pose>-0.1928 -0.2298 0.0500 0 0 4.0143</pose>
+        <geometry><box><size>0.18 0.32 0.10</size></box></geometry>
+        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface></collision>
+      <visual name="ped3v"><pose>-0.1928 -0.2298 0.0500 0 0 4.0143</pose>
+        <geometry><box><size>0.18 0.32 0.10</size></box></geometry>
+        <material><ambient>0.72 0.72 0.70 1</ambient><diffuse>0.72 0.72 0.70 1</diffuse></material></visual>
+      <collision name="ramp3o"><pose>-0.2391 -0.2849 0.1047 0 -0.6109 4.0143</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <surface><friction><ode><mu>0.30</mu><mu2>0.30</mu2></ode></friction></surface></collision>
+      <visual name="ramp3ov"><pose>-0.2391 -0.2849 0.1047 0 -0.6109 4.0143</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <material><ambient>0.55 0.58 0.62 1</ambient><diffuse>0.55 0.58 0.62 1</diffuse></material></visual>
+      <collision name="ramp3i"><pose>-0.1466 -0.1747 0.1047 0 0.6109 4.0143</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <surface><friction><ode><mu>0.30</mu><mu2>0.30</mu2></ode></friction></surface></collision>
+      <visual name="ramp3iv"><pose>-0.1466 -0.1747 0.1047 0 0.6109 4.0143</pose>
+        <geometry><box><size>0.025 0.260 0.006</size></box></geometry>
+        <material><ambient>0.55 0.58 0.62 1</ambient><diffuse>0.55 0.58 0.62 1</diffuse></material></visual>
+
+      <!-- ============ walls: the LiDAR pose reference ============ -->
+      <!-- WALL HEIGHT 0.90, was 0.60. The LiDAR moved up to z=0.68 to get clear of the
+           robot's own arms (which reach 0.610 and were being scanned as if they were
+           wall), so the walls have to be taller than the sensor or it sees nothing at
+           all. 0.90 leaves 0.22 m above the beam. -->
+          <collision name="backwall"><pose>-0.46 0 0.45 0 0 0</pose>
+        <geometry><box><size>0.02 0.90 0.90</size></box></geometry></collision>
+      <visual name="backwallv"><pose>-0.46 0 0.45 0 0 0</pose>
+        <geometry><box><size>0.02 0.90 0.90</size></box></geometry>
+        <material><ambient>0.62 0.62 0.60 1</ambient><diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+      <!-- WALL B, perpendicular to A, forming an L-corner.
+           One flat wall fixes heading and the distance to that wall, but NOT the
+           coordinate parallel to it - sliding along a wall changes nothing about how
+           it looks. Correcting heading alone was not enough: the base is only ever
+           commanded to rotate, so the code assumed it stayed at the world origin, but
+           the wheels slip (a run accumulated 29 deg of odometry heading error) and
+           slipping wheels translate the base too. The robot walks off the origin, and
+           then a grasp aimed at "0.30 m straight ahead" lands centimetres from the
+           object and a placement lands off the pedestal. A second, perpendicular wall
+           makes the full pose observable. -->
+      <collision name="sidewall"><pose>-0.18 -0.46 0.45 0 0 0</pose>
+        <geometry><box><size>0.56 0.02 0.90</size></box></geometry></collision>
+      <visual name="sidewallv"><pose>-0.18 -0.46 0.45 0 0 0</pose>
+        <geometry><box><size>0.56 0.02 0.90</size></box></geometry>
+        <material><ambient>0.62 0.62 0.60 1</ambient><diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+    </link>
+  </model>
+</sdf>

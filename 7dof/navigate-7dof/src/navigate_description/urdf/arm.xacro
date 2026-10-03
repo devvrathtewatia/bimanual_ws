@@ -1,0 +1,495 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+<!--
+  6-DOF arm with a SPHERICAL WRIST.
+
+    J1 yaw (z) == riser == J2 pitch (y) == L1 == J3 elbow pitch (y) == L2
+       == J4 roll (x) == J5 pitch (y) == J6 roll (x) == palm + 2 fingers
+
+  The J4/J5/J6 axes all intersect at the wrist centre, which is what keeps the
+  inverse kinematics closed form: solve the wrist centre from J1..J3, then
+  extract J4..J6 from the residual rotation as X-Y-X Euler angles.
+
+  WHY SIX. A 4-DOF arm can put the hand anywhere but can only orient it within
+  one vertical plane, and that plane is fixed by where the hand has to be. Two
+  hands holding an object's two ends through a 90 deg flip need each hand's FULL
+  orientation to follow the object. Sampling that motion showed the wrist pitch
+  would have to reach 128 deg while the approach direction was simultaneously
+  constrained - impossible with fewer than three wrist axes. With three, and a
+  wrist pitch range of +/-140 deg, all 36 tested configurations solve.
+
+  Conventions (must match the behaviour package's ik.py):
+   * positive J2/J3/J5 pitch rotates DOWN (right-hand rule about +y)
+   * the grasp point is LG = 0.07 m beyond the wrist centre along the tool x axis
+   * fingers are prismatic and close along the palm's local y; positive = OPEN
+-->
+
+  <!-- where the suction cup sits along the finger: the object's equator -->
+  <xacro:property name="RIDGE_X_CUP" value="0.065"/>
+
+  <xacro:macro name="arm_6dof" params="side reflect finger_effort:=6.0">
+
+    <!-- === J1 yaw + riser === -->
+    <link name="${side}_shoulder_link">
+      <visual>
+        <origin xyz="0 0 0.05"/>
+        <geometry><cylinder radius="0.020" length="0.10"/></geometry>
+        <material name="arm_blue"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0.05"/>
+        <geometry><cylinder radius="0.020" length="0.10"/></geometry>
+      </collision>
+      <xacro:cyl_inertial m="0.16" r="0.020" h="0.10">
+        <origin xyz="0 0 0.05"/>
+      </xacro:cyl_inertial>
+    </link>
+    <joint name="${side}_j1" type="revolute">
+      <parent link="base_link"/>
+      <child link="${side}_shoulder_link"/>
+      <origin xyz="${arm_mount_x} ${reflect*arm_mount_y} ${deck_top_z}"/>
+      <axis xyz="0 0 1"/>
+      <!-- EFFORT 12 N.m, was 6.0. The shoulder pitch needs 2.17 N.m to hold the arm
+           static and 3.74 N.m with a 0.5 kg payload (computed in the companion
+           rigid-body dynamics library), so a 6 N.m limit left only 1.6x margin before
+           the joint saturates - and a saturated joint cannot reach its commanded
+           position, which is what "arms did not converge, left_j5 off 0.642" looks
+           like. The errors were worse LOADED than unloaded, which is the signature.
+           12 N.m is about 3x the loaded static requirement, leaving room for the
+           acceleration of the move itself. This is a limit, not a command: it does not
+           make the arm push harder, only stops it being clipped. -->
+      <limit lower="${-yaw_lim}" upper="${yaw_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.7" friction="0.05"/>
+    </joint>
+
+    <!-- === J2 shoulder pitch + the pitch yoke === -->
+    <!-- The yoke exists only to give J2b a child. It is the housing the roll actuator
+         turns inside, so it carries that actuator's mass: 0.12 kg, ON the roll axis, so
+         it adds essentially nothing to the shoulder pitch torque (lever arm ~0) while
+         still being counted in the 5 kg Kobuki budget. See MASS_BUDGET.md. -->
+    <link name="${side}_upper_yoke_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+        <geometry><cylinder radius="0.022" length="0.05"/></geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+        <geometry><cylinder radius="0.022" length="0.05"/></geometry>
+      </collision>
+      <xacro:box_inertial m="0.12" x="0.044" y="0.05" z="0.044">
+        <origin xyz="0 0 0"/>
+      </xacro:box_inertial>
+    </link>
+    <joint name="${side}_j2" type="revolute">
+      <parent link="${side}_shoulder_link"/>
+      <child link="${side}_upper_yoke_link"/>
+      <origin xyz="0 0 ${shoulder_z - deck_top_z}"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-pitch2_lim}" upper="${pitch2_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.7" friction="0.05"/>
+    </joint>
+
+    <!-- === J2b SHOULDER ROLL - THE SEVENTH AXIS === -->
+    <!-- Rolls about the upper arm's OWN axis, so it does not move the elbow: the elbow
+         sits L1 along local x whatever the roll is. What it moves is the PLANE the
+         forearm swings in, which is the elbow-swivel redundancy a 6-DOF arm lacks.
+         Six axes reach the swivel circle at only two points - elbow up and elbow down -
+         and in this task elbow-up collides arm-to-arm at the coaxial 90 deg pose while
+         elbow-down enters the base on the descent, with a 207 deg jump between them.
+         Measured with the box-decomposed collision model, 6 DOF also puts the finger
+         inside its own forearm on 23 of 94 arm-poses, worst -19.6 mm.
+         Placed at the shoulder because that is the one spot where added mass loads
+         nothing downstream. -->
+    <link name="${side}_upper_arm_link">
+      <visual>
+        <origin xyz="${L1/2} 0 0"/>
+        <geometry><box size="${L1} 0.045 0.032"/></geometry>
+        <material name="arm_blue"/>
+      </visual>
+      <collision>
+        <origin xyz="${L1/2} 0 0"/>
+        <geometry><box size="${L1} 0.045 0.032"/></geometry>
+      </collision>
+      <xacro:box_inertial m="0.16" x="${L1}" y="0.045" z="0.032">
+        <origin xyz="${L1/2} 0 0"/>
+      </xacro:box_inertial>
+    </link>
+    <joint name="${side}_j2b" type="revolute">
+      <parent link="${side}_upper_yoke_link"/>
+      <child link="${side}_upper_arm_link"/>
+      <origin xyz="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-roll2_lim}" upper="${roll2_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.7" friction="0.05"/>
+    </joint>
+
+    <!-- === J3 elbow + forearm === -->
+    <!-- THE FOREARM IS 20 mm THICK, NOT 28, AND THAT IS A CLEARANCE DECISION.
+         Its own hand folds back against it when the wrist bends past about 100 deg, which
+         is the whole of the descent after the flip - waypoints 20 to 36, hand dropping
+         from z=0.327 to 0.210. At 28 mm that contact was -2.0 mm, i.e. touching, on 17 of
+         37 waypoints even with the elbow swivel free to route around it, because the
+         swivel cannot move the forearm out of the path of the hand mounted on its end.
+         20 mm makes it +2.0 mm clear everywhere. Verified stable at 3, 5 and 7 capsules
+         per row (+2.8 to +2.9 mm with the finger also thinned), so the figure is real to
+         about 0.2 mm rather than an artefact of the decomposition.
+         Moving the hand further out instead (LG 0.070 -> 0.080) makes it WORSE, -0.5 mm:
+         it swings the palm through a wider arc about the same wrist. -->
+    <link name="${side}_forearm_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+        <geometry><cylinder radius="0.020" length="0.048"/></geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <visual>
+        <origin xyz="${L2/2} 0 0"/>
+        <geometry><box size="${L2} 0.038 0.020"/></geometry>
+        <material name="arm_blue"/>
+      </visual>
+      <collision>
+        <origin xyz="${L2/2} 0 0"/>
+        <geometry><box size="${L2} 0.038 0.020"/></geometry>
+      </collision>
+      <xacro:box_inertial m="0.13" x="${L2}" y="0.038" z="0.020">
+        <origin xyz="${L2/2} 0 0"/>
+      </xacro:box_inertial>
+    </link>
+    <joint name="${side}_j3" type="revolute">
+      <parent link="${side}_upper_arm_link"/>
+      <child link="${side}_forearm_link"/>
+      <origin xyz="${L1} 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-pitch3_lim}" upper="${pitch3_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.7" friction="0.05"/>
+    </joint>
+
+    <!-- === SPHERICAL WRIST: J4 roll, J5 pitch, J6 roll ===
+         All three origins are coincident at the wrist centre, so the three
+         axes intersect. That is what decouples position from orientation. -->
+    <link name="${side}_wrist_roll_link">
+      <visual>
+        <geometry><cylinder radius="0.018" length="0.030"/></geometry>
+        <origin rpy="0 ${PI/2} 0"/>
+        <material name="dark_grey"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="0.018" length="0.030"/></geometry>
+        <origin rpy="0 ${PI/2} 0"/>
+      </collision>
+      <inertial>
+        <mass value="0.07"/>
+        <inertia ixx="1.5e-5" iyy="1.5e-5" izz="1.5e-5" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+    <joint name="${side}_j4" type="revolute">
+      <parent link="${side}_forearm_link"/>
+      <child link="${side}_wrist_roll_link"/>
+      <origin xyz="${L2} 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-wroll_lim}" upper="${wroll_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.5" friction="0.05"/>
+    </joint>
+
+    <link name="${side}_wrist_pitch_link">
+      <visual>
+        <geometry><sphere radius="0.019"/></geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <collision><geometry><sphere radius="0.019"/></geometry></collision>
+      <inertial>
+        <mass value="0.07"/>
+        <inertia ixx="1.5e-5" iyy="1.5e-5" izz="1.5e-5" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+    <joint name="${side}_j5" type="revolute">
+      <parent link="${side}_wrist_roll_link"/>
+      <child link="${side}_wrist_pitch_link"/>
+      <origin xyz="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-wpitch_lim}" upper="${wpitch_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.5" friction="0.05"/>
+    </joint>
+
+    <!-- === J6 tool roll + palm === -->
+    <link name="${side}_palm_link">
+      <visual>
+        <origin xyz="0.016 0 0"/>
+        <geometry><cylinder radius="0.017" length="0.032"/></geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <visual>
+                  <origin xyz="0.032 0 0"/>
+        <geometry><box size="0.022 0.140 0.040"/></geometry>
+        <material name="arm_blue"/>
+      </visual>
+      <collision>
+        <origin xyz="0.032 0 0"/>
+        <geometry><box size="0.022 0.140 0.040"/></geometry>
+      </collision>
+      <xacro:box_inertial m="0.11" x="0.022" y="0.140" z="0.040">
+        <origin xyz="0.032 0 0"/>
+      </xacro:box_inertial>
+    </link>
+    <joint name="${side}_j6" type="revolute">
+      <parent link="${side}_wrist_pitch_link"/>
+      <child link="${side}_palm_link"/>
+      <origin xyz="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-wroll_lim}" upper="${wroll_lim}" effort="12.0" velocity="3.0"/>
+      <dynamics damping="0.5" friction="0.05"/>
+    </joint>
+
+    <!-- WRIST FORCE/TORQUE, as a UR5e has built in and a Panda estimates. Mounted on
+         j6, so it measures the entire wrench transmitted to everything distal: palm,
+         fingers, payload and any contact force. A position controller cannot feel that
+         it is pressing on something; this can. Used by check_wrist_load and by the
+         protective stop in send_pair. -->
+    <gazebo reference="${side}_j6">
+      <sensor name="${side}_wrist_ft" type="force_torque">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <topic>/ft/${side}</topic>
+        <force_torque>
+          <frame>child</frame>
+          <measure_direction>parent_to_child</measure_direction>
+        </force_torque>
+      </sensor>
+    </gazebo>
+
+    <!-- === fingers: prismatic along the palm's y === -->
+    <xacro:macro name="finger" params="side fprefix faxis finger_effort">
+      <link name="${side}_finger_${fprefix}_link">
+        <!-- FINGER LENGTH: 0.080 m, starting 0.030 m out, so the tips reach 0.040 m
+             PAST the grasp point. This number has now been wrong in both directions
+             and the history is worth keeping.
+
+             TOO LONG (0.075 m starting 0.044 m out, tips 0.049 m past the grasp
+             point). With the grasp aimed at a floor-lying object's centre the tips
+             ended up 0.009-0.019 m BELOW the ground plane, so the arms fought the
+             floor on every grasp - which read as failure to converge and as a jerk
+             at pickup.
+
+             TOO SHORT (0.055 m, tips 0.015 m past the grasp point). The grasp point
+             also had to move UP by grip_dz = 0.025 m to keep the palm out of the top
+             of a 0.090 m object, and the two together left the fingertips 0.010 m
+             ABOVE the object's axis. So the fingers never reached the widest part of
+             the body: every contact was on the upper curve, which wedges a cylinder
+             DOWNWARD out of the grip (about 5 N) and left only a 1.27x friction
+             margin holding it. The user spotted this from the simulation before the
+             arithmetic did.
+
+             NOW. With the grasp 0.025 m above the axis and the tips 0.040 m past the
+             grasp point, the fingers span z = 0.030 to 0.110 about a body whose axis
+             sits at 0.045 and whose surface ends at 0.090. They STRADDLE the widest
+             point, so contact happens where the surface normal is horizontal: no
+             downward wedge, the grasp is self-centring, and the friction margin rises
+             to about 2.7x. Floor clearance is still 0.030 m, well clear of the failure
+             above. LG is unchanged, so the kinematics, the reach and the flip proof
+             all stand. Validated by collision.py, which models the fingers as bodies.
+
+             CONSEQUENCE: the binding half-width becomes the object's full radius
+             rather than its width at the grasp height, so `close` is 0.048 for every
+             object of this diameter - see E21 in ERROR_CATALOGUE.txt. -->
+
+        <visual>
+          <origin xyz="0.040 0 0"/>
+          <geometry><box size="0.080 0.012 0.040"/></geometry>
+          <material name="black"/>
+        </visual>
+        <!-- THE SUCTION CUP, flush with the pad face (see the note in the gazebo block).
+             A URDF <visual> here, not inside <gazebo reference>: written there in URDF syntax
+             Gazebo could not parse it ("origin ... not defined in SDF", "cylinder radius not
+             defined") and silently dropped it, so the cups never existed in the simulation.
+             rpy puts the disc's axis along the finger-travel axis, normal to the pad - the
+             earlier 0 pi/2 0 turned it along the finger's length, 15 mm proud of the face.
+             Visual only: flush with the pad, a collision shape would add nothing. -->
+        <visual>
+          <origin xyz="${RIDGE_X_CUP} ${-faxis * 0.004} 0" rpy="${PI/2} 0 0"/>
+          <geometry><cylinder radius="0.015" length="0.004"/></geometry>
+          <material name="black"/>
+        </visual>
+        <collision>
+          <origin xyz="0.040 0 0"/>
+          <geometry><box size="0.080 0.012 0.040"/></geometry>
+        </collision>
+        <inertial>
+          <mass value="0.03"/>
+          <inertia ixx="1.6e-5" iyy="8e-6" izz="8e-6" ixy="0" ixz="0" iyz="0"/>
+        </inertial>
+      </link>
+      <!-- ==================== DISTAL PHALANX ====================
+           THE RIGID PLATE CANNOT WRAP. The object's equator sits grip_dz + LG = 95 mm
+           down the finger and the plate stops at 110 mm, so it reaches 15 mm past the
+           widest point and then runs out. Everything tried on the flat plate - ridges,
+           pad length, friction, force - only rearranged contact ABOVE or AT the equator,
+           which is why a pinch on a 90 mm cylinder kept failing: it had 3 mm of lateral
+           capture and no way to get underneath.
+           A hinged second segment curls INWARD as the hand closes, so the fingertips
+           reach BELOW the equator without extending the rigid plate into the floor - the
+           constraint that capped every previous attempt (13.8 mm of floor clearance).
+           Two of these per hand close into a basket rather than a pinch: the object is
+           encaged instead of squeezed, so holding it stops depending on millimetre
+           alignment. This is the two-phalanx underactuated finger used by real adaptive
+           grippers (Robotiq 2F-85, Festo DHAS).
+           IN HARDWARE one tendon and a return spring would drive both segments and the
+           curl would be passive. Here the curl is COMMANDED in step with the proximal
+           closure, because passive spring joints are not dependable across Gazebo physics
+           engines. The coupling lives in grippers() in task_node.py. -->
+      <link name="${side}_finger_${fprefix}_tip_link">
+        <visual>
+          <origin xyz="0.011 0 0"/>
+          <geometry><box size="0.022 0.012 0.040"/></geometry>
+          <material name="black"/>
+        </visual>
+        <collision>
+          <origin xyz="0.011 0 0"/>
+          <geometry><box size="0.022 0.012 0.040"/></geometry>
+        </collision>
+        <inertial>
+          <mass value="0.012"/>
+          <inertia ixx="4e-6" iyy="2e-6" izz="2e-6" ixy="0" ixz="0" iyz="0"/>
+        </inertial>
+      </link>
+      <joint name="${side}_finger_${fprefix}_tip_joint" type="revolute">
+        <parent link="${side}_finger_${fprefix}_link"/>
+        <child link="${side}_finger_${fprefix}_tip_link"/>
+        <!-- hinged at the far end of the proximal plate -->
+        <origin xyz="0.080 0 0"/>
+        <!-- about the object's axis, signed so POSITIVE always curls inward -->
+        <axis xyz="0 0 ${-faxis}"/>
+        <limit lower="0.0" upper="0.70" effort="${finger_effort}" velocity="1.5"/>
+        <dynamics damping="0.3" friction="0.05"/>
+      </joint>
+      <gazebo reference="${side}_finger_${fprefix}_tip_link">
+        <mu1>2.2</mu1><mu2>2.2</mu2>
+        <!-- CONTACT SENSOR ON THE CURLED TIP. On a round object the distal phalanx curls in
+             and the TIP bears on the body while the proximal pad is held a few mm off it
+             (the finger still stalls +4 mm). The pad sensor below therefore read 0/2 on a
+             hand that was gripping. The tip is part of the hand: sense it too. -->
+        <sensor name="${side}_finger_${fprefix}_tip_contact" type="contact">
+          <always_on>true</always_on>
+          <update_rate>50</update_rate>
+          <contact>
+            <collision>${side}_finger_${fprefix}_tip_link_collision</collision>
+          </contact>
+          <topic>/contact/${side}_finger_${fprefix}_tip</topic>
+        </sensor>
+      </gazebo>
+
+      <joint name="${side}_finger_${fprefix}_joint" type="prismatic">
+        <parent link="${side}_palm_link"/>
+        <child link="${side}_finger_${fprefix}_link"/>
+        <origin xyz="0.030 0 0"/>
+        <axis xyz="0 ${faxis} 0"/>
+        <!-- EFFORT IS WHAT LIFTS THE ROBOT. Cut from 30 N to 8 N and now to 3 N.
+             The fingers are commanded PAST the object's surface, so they stall
+             against it and hold at whatever the effort limit allows. At 8 N per
+             finger that is 32 N across four fingers, applied 0.30 m out in front of
+             the wheel axle - enough of a moment to tip the base up on its casters.
+             It showed up exactly when the grippers closed on an object and again when
+             they released onto the shelf, which are the only two moments the fingers
+             push on anything. 3 N still holds a 0.5 kg object at mu=1.5 with a factor
+             of two, and cannot lift the robot. -->
+        <!-- 6 N, was 3. Justified by measurement, not by the 0.375 N.m figure that
+             originally motivated it (see the jaw comment - that was the horizontal case
+             and does not apply). The worst single-handed requirement is 0.110 N.m, when
+             the object is upright. With the ridges' 15 mm arm, 3 N gives 0.135 N.m =
+             1.23x, under the 1.5x minimum; 6 N gives 0.270 N.m = 2.4x. Hence 6 N.
+             30 N and 8 N were both rejected years of debugging ago for crushing objects
+             and levering the base off its wheels - but that was a flat plate pressing
+             into the body. This is two 8 mm ridges, a different contact. The base tilt
+             check and the 30 N protective stop are the guards if it turns out worse. -->
+        <!-- ASYMMETRIC BY DESIGN, and this is the load-bearing idea of the whole
+                 section. Two RIGID grasps on one RIGID object is an over-constrained
+                 closed chain: the arms cannot both reach their targets if they lag by
+                 different amounts, and because position control has no give, the
+                 mismatch becomes force. It was measured at 19.5 N on a wrist holding a
+                 4.41 N object - 4.4x - and that is what sheared the object out.
+                 Making the SUPPORT hand weak turns the chain into a friction clutch. It
+                 can transmit at most mu * N of shear before it slides along the object,
+                 so the internal force is CAPPED BY CONSTRUCTION rather than by how well
+                 the controller tracks:
+                     left  (grips)   2 x 6.0 N x mu 2.2 = 26.4 N  - holds the object
+                     right (supports) 2 x 1.5 N x mu 2.2 =  6.6 N  - slips before it fights
+                 Sliding along the object is not a failure here; it is the release valve.
+                 Slip is measured against the LEFT hand, which is the one that holds. -->
+            <limit lower="0.008" upper="${finger_travel}" effort="${finger_effort}" velocity="0.10"/>
+        <dynamics damping="0.5" friction="0.1"/>
+      </joint>
+      <gazebo reference="${side}_finger_${fprefix}_link">
+        <!-- SILICONE, Shore A 30. Real pad coefficients: nitrile ~0.9, polyurethane
+               1.0-1.5, silicone 1.5-2.5. HONEST LIMITATION: the real advantage of
+               silicone is that it CONFORMS, turning a line contact into an area contact,
+               and a rigid-body simulator cannot represent that. 2.2 is standing in for an
+               effect this model does not actually have. -->
+        <!-- PAD LENGTH ALONG THE OBJECT'S AXIS: 0.060, was 0.030. THIS IS WHAT RESISTS
+             GRAVITY TIPPING THE FAR END once only one hand is holding. A pad pressing
+             with total force N over a patch of half-length a can resist a moment up to
+             N*a before the pressure shifts to one edge and it rocks, so the resisting
+             torque is set by the pad's LENGTH, not by the friction coefficient and not by
+             any ridge. Two fingers at 6 N over a 60 mm pad give 12 x 0.030 = 0.36 N.m.
+             The single-handed phase runs from the 70 deg handover to upright, where the
+             requirement peaks at 0.110 N.m -> 3.3x.
+             KNOWN BOUND, stated rather than buried: if the support hand were to let go
+             completely while the object is still HORIZONTAL, the requirement would be
+             0.375 N.m and this pad gives 0.96x. That case is not part of the sequence -
+             both hands are on it until 70 deg - and the support hand has 3x margin on the
+             load it carries. But it is the weakest point in the design.
+             Lengthening the pad is free in every other respect: it grows ALONG the
+             object, so it does not widen the hand, does not change floor clearance, and
+             the two pads still finish 110 mm apart. It leaves 5 mm of object beyond the
+             pad at END_CLEAR = 0.035. -->
+        <!-- SUCTION CUP, one per finger, FLUSH WITH THE PAD FACE.
+             WHY SUCTION. Every problem this gripper has had traces to one of two things:
+             capture range (a pinch overlaps a 45 mm radius by 3 mm, against 20-60 mm of
+             positioning error) or resistance to rotation (a flat pad on a cylinder is a
+             LINE contact, so it resists a moment only over the pad's own width). Suction
+             removes both, because it does not depend on geometry at all: the cup seals
+             wherever it lands within a few mm of normal, and it holds over an AREA.
+                 30 mm bellows cup, -60 kPa:  F = P.A = 60000 x pi(0.015)^2 = 42 N
+                 against a 4.41 N object                                  -> 9.6x
+             Bellows cups seal on curved surfaces routinely and a 45 mm radius is gentle.
+             FLUSH, NOT PROUD, and that is deliberate. A cup standing proud of the pad
+             would hold the flat face off the object - which is exactly the fault the
+             curled tips had, where over-reaching flaps levered the bottle clear of the
+             pads and left it balanced on two lines. Flush means the pad, the cup and the
+             curled tip all bear at once, and `close` does not have to change. -->
+        <!-- (the cup geometry is declared on the link itself, above) -->
+          <!-- FLAT SILICONE PAD. The ridged jaw that used to be here was removed, and
+               the reason is worth recording because it cost several rounds of work. It
+               existed to give ONE hand enough torque to stop the object turning in the
+               grip while that hand carried it 85 mm off centre. THAT LOAD CASE NO LONGER
+               EXISTS: the left hand now grips the object at its CENTRE, so the gravity
+               lever arm is the grip offset alone and the requirement falls by more than
+               an order of magnitude. Geometry earns its complexity only if something
+               needs it, and nothing does any more.
+               Removing it also returns two things: the finger bodies stop sitting 6 mm
+               wider, which is what consumed the entire radial barrier clearance in
+               section A, and this file becomes shareable with the other sections again.
+               What holds the object now is friction on a conforming pad - two fingers at
+               6 N with mu 2.2 give 26.4 N of friction against a 4.41 N object. -->
+          <mu1>2.2</mu1><mu2>2.2</mu2>
+        <!-- CONTACT SENSOR, one per finger. The grasp check used to infer contact from
+             how far short the finger stalled against its commanded position. That is
+             indirect: it cannot distinguish the object from anything else the finger
+             happens to touch, and it silently depends on the commanded over-travel
+             being larger than the detection threshold. This reports contact as a fact.
+             Four of them, so "one hand gripping and the other closing on air" - the
+             failure that kept recurring - is visible per finger rather than averaged
+             away. -->
+        <sensor name="${side}_finger_${fprefix}_contact" type="contact">
+          <always_on>true</always_on>
+          <update_rate>50</update_rate>
+          <contact>
+            <collision>${side}_finger_${fprefix}_link_collision</collision>
+          </contact>
+          <topic>/contact/${side}_finger_${fprefix}</topic>
+        </sensor>
+      </gazebo>
+    </xacro:macro>
+    <xacro:finger side="${side}" fprefix="l" faxis="1" finger_effort="${finger_effort}"/>
+    <xacro:finger side="${side}" fprefix="r" faxis="-1" finger_effort="${finger_effort}"/>
+
+  </xacro:macro>
+</robot>

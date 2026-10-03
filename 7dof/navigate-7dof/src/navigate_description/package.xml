@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>navigate_description</name>
+  <version>0.1.0</version>
+  <description>Section D: the 7-DOF bimanual Kobuki robot - the same base, arms and
+    grippers as the other 7-DOF sections (base, arm and ros2_control xacros identical), with
+    the workspace camera that perceive also carries: a Kobuki-class base with two 7-DOF arms,
+    suction-assisted grippers, a sensor mast (forward RGB camera, workspace camera, 2D LiDAR),
+    ros2_control interfaces and Gazebo Harmonic plugins.
+  </description>
+  <maintainer email="nishrraj@todo.todo">nishrraj</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>position_controllers</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

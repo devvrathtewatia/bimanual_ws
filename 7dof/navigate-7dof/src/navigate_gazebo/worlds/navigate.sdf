@@ -1,0 +1,110 @@
+<?xml version="1.0"?>
+<!--
+  SECTION D world - NAVIGATE. A walled room 5 m square. The robot spawns at its centre facing
+  +x - the scan point - and its three objects lie METRES away from it and from each other, in
+  mixed states, at angles nothing in the config gives. It has to scan for them, drive to each
+  lying one and stand it up where it lies, then scan again. There is NO shelf: placing on one
+  is pick-place's.
+-->
+<sdf version="1.9">
+  <world name="navigate">
+
+    <physics name="step" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-forcetorque-system"
+            name="gz::sim::systems::ForceTorque"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.2 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="col">
+          <geometry><plane><normal>0 0 1</normal><size>12 12</size></plane></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="vis">
+          <geometry><plane><normal>0 0 1</normal><size>12 12</size></plane></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.85 0.85 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+
+    <!-- THE ROOM - and the LiDAR's reference. room_ref localises off whichever of these four
+         walls it can see, so from anywhere in the room the pose is fixed by three or four of
+         them rather than by the two-wall L the fixed-base sections use. THE FACES are what
+         the config's `room` must match: each wall is 0.10 thick and centred 2.55 out, so its
+         face is at 2.50 (test_the_room_is_the_world). 0.90 tall, above the LiDAR at 0.68 -
+         the objects, at most 0.24, are below it, so the walls are ALL it sees. -->
+    <model name="room">
+      <static>true</static>
+      <link name="link">
+        <collision name="wall_n"><pose>0 2.55 0.45 0 0 0</pose>
+          <geometry><box><size>5.2 0.10 0.90</size></box></geometry></collision>
+        <visual name="wall_n_v"><pose>0 2.55 0.45 0 0 0</pose>
+          <geometry><box><size>5.2 0.10 0.90</size></box></geometry>
+          <material><ambient>0.62 0.62 0.60 1</ambient><diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+        <collision name="wall_s"><pose>0 -2.55 0.45 0 0 0</pose>
+          <geometry><box><size>5.2 0.10 0.90</size></box></geometry></collision>
+        <visual name="wall_s_v"><pose>0 -2.55 0.45 0 0 0</pose>
+          <geometry><box><size>5.2 0.10 0.90</size></box></geometry>
+          <material><ambient>0.62 0.62 0.60 1</ambient><diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+        <collision name="wall_e"><pose>2.55 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.10 5.2 0.90</size></box></geometry></collision>
+        <visual name="wall_e_v"><pose>2.55 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.10 5.2 0.90</size></box></geometry>
+          <material><ambient>0.62 0.62 0.60 1</ambient><diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+        <collision name="wall_w"><pose>-2.55 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.10 5.2 0.90</size></box></geometry></collision>
+        <visual name="wall_w_v"><pose>-2.55 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.10 5.2 0.90</size></box></geometry>
+          <material><ambient>0.62 0.62 0.60 1</ambient><diffuse>0.62 0.62 0.60 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- THE OBJECTS, metres apart and in MIXED states. Nothing in the config says where they
+         are, how they lie, or which way to look. From the scan point each is 1.5-1.7 m away,
+         inside the 1.0-2.4 m the mast camera is trusted over; they are 2.5-3.1 m from each
+         other, and at least 1.0 m from every wall, so each has room to be stood up.
+           bottle  STANDING already, (1.40, 0.90)          -> seen standing, left alone
+           can     LYING at (-1.10, 1.25), axis  25 deg    -> driven to and stood up
+           box     LYING at ( 0.35,-1.45), axis 110 deg    -> driven to and stood up
+         A lying body is laid down by a 90 deg roll, which puts its axis along -y at spawn yaw
+         zero, so spawn yaw = axis + 90 deg. -->
+    <include>
+      <uri>model://bottle</uri>
+      <name>bottle</name>
+      <pose>1.400 0.900 0.120 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://can</uri>
+      <name>can</name>
+      <pose>-1.100 1.250 0.045 1.5708 0 2.0071</pose>
+    </include>
+    <include>
+      <uri>model://box</uri>
+      <name>box</name>
+      <pose>0.350 -1.450 0.045 1.5708 0 3.4907</pose>
+    </include>
+
+  </world>
+</sdf>

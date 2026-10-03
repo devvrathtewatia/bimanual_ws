@@ -1,0 +1,198 @@
+# =============================================================================
+# SECTION B configuration - collaborative in-place reorientation.
+#
+# The base never translates; it rotates in place to face each object. Each
+# object is picked up by BOTH arms holding its two ends, rotated 90 deg from
+# lying to upright while both hands keep hold, then set down standing at the
+# same spot. There is no shelf and no transfer - this section isolates the
+# reorientation capability so a failure can only be in the flip.
+#
+# GEOMETRY. reach = 0.30 m and flip_z = 0.24 m were chosen by sweeping both
+# against the body-level collision checker, not guessed: of 48 combinations only
+# a handful keep every link clear of the other arm, the floor and the base
+# through the whole cycle, and this one has the largest margin (+0.014 m).
+# The old 0.26 m / 0.22 m station put the palm plate inside the base circle and
+# the lower hand within millimetres of the floor.
+#
+#   surface_z   height of the surface the object lies on and is stood up on: 0.0 is the
+#               floor, a shelf or table's top otherwise (declare that shelf under fixtures)
+#   cz          object centre height while LYING, ABOVE its surface
+#   upright_cz  object centre height once STANDING, ABOVE its surface (= half its length)
+#   EVERY HEIGHT IN THE CYCLE IS DERIVED FROM THE SURFACE, so moving an object onto a shelf
+#   is a change to surface_z and a fixture, nothing else. What stays tied to the ARM rather
+#   than the surface is the flip station (flip_z), raised only if the object would hit its
+#   surface while turning - see choreography.flip_height(). The reach limits the height:
+#   at reach 0.30 no surface above about 0.14 m can have an object stood up on it.
+#   s           grip offset from the centre along the long axis
+#   close       finger position closed on it
+# =============================================================================
+
+task_node:
+  ros__parameters:
+    # close = 0.045 drives each finger's inner face 6 mm INSIDE the object surface -
+    # deliberately past contact. The fingers stall on the object against the 8 N effort
+    # limit, and because both are commanded to the same position the object is
+    # SELF-CENTRED between them. Closing only to contact leaves a visible gap on one
+    # side and an overlap on the other as soon as the base heading is a fraction of a
+    # degree off, which at a ~0.3 m reach is a few mm sideways.
+
+    reach: 0.30              # RE-SWEPT after the grasp offset was added. The offset
+                             # that keeps the palm out of the object also pushes both
+                             # hands to one side, which cost reach and squeezed the two
+                             # arms together at the top of the flip. Splitting the flip
+                             # (see flip_handover) reopened the window: this station
+                             # clears by 38.8 mm where the old one cleared by 13.8.
+    flip_z: 0.24             # object centre height during the rotation
+    hover_dz: 0.10
+    open_pos: 0.065
+    # PROTECTIVE STOP thresholds. Normal running is under about 5 N per wrist (a
+    # shared 0.45 kg object plus gripper weight) and roughly 56 N would tip the
+    # chassis, so 30 N aborts clear of both. Base tilt on flat ground is ~0. Derived,
+    # not measured - confirm against a run.
+    tilt_warn_deg: 1.5
+    tilt_abort_deg: 4.0
+    force_warn_n: 15.0
+    force_abort_n: 30.0
+    wall_band: [0.15, 1.60]  # LiDAR range window for the wall fit
+    wall_max_rms: 0.03       # reject a line fit worse than this
+    heading_tol: 0.004
+    place_drop: 0.010        # weld released this far above the surface; the remaining
+                             # 10 mm is settled with the fingers still closed, so the
+                             # object is guided down instead of pressed into the surface
+    # NO flip_handover_deg ANY MORE. Both hands take the object from lying to upright AND
+    # down to the floor; there is no handover angle to configure, and the node ignores
+    # (and says so) a stale entry rather than obeying it.
+    # ---- FRICTION GRASP AND SLIP ----
+    # friction: hold the object with the fingers, as a real gripper does. weld: the old
+    # DetachableJoint, kept so the two can be compared directly - that comparison is the
+    # experiment, not a fallback.
+    # FRICTION, not suction. A suction attachment fully constrains the object,
+    # which makes the SECOND HAND UNNECESSARY - the bimanual claim becomes
+    # decorative and the demonstration reduces to 'rigidly attach and rotate'.
+    # Under friction neither hand alone can control the object's orientation
+    # through the rotation, the load share is measurable on the contact sensors,
+    # and BIMANUAL/HANDOVER CHECK report real numbers instead of 'not measurable'.
+    # Margins now support it: 4.1x on friction, 2.2x on single-hand torque.
+    # suction remains available as a one-line fallback if the pads will not hold.
+    # SUCTION - the mode that actually stood BOTH objects upright in Gazebo.
+    # The choreography is identical in every mode: both hands grip, lift, yaw, flip,
+    # lower and release together. What suction changes is only that the cup on the left
+    # palm carries the load, so the fingers can back off the surface while carrying
+    # (see CARRY_EASE in task_node.py) instead of sitting 3 mm inside the object.
+    # (bottle and box, tilt 0.0 deg, right hand releasing at ~70 deg).
+    # friction remains available and its margins hold on paper, but suction
+    # is the configuration with a confirmed result and nothing should
+    # regress it. NOTE the trade, honestly: a suction attachment fully
+    # constrains the object, so the second hand is not load-bearing and the
+    # bimanual claim rests on the LIFT and the 0-70 deg rotation rather than
+    # on the grasp itself.
+    grasp_mode: suction
+                        # friction|weld|suction - friction is the fallback if the
+                        # cups do not seal on a curved surface in practice.
+    # Engage the weld if a friction grasp slips beyond recovery, rather than dropping
+    # the object. The log records every rescue, so the friction failure rate is
+    # measurable instead of hidden.
+    # OFF. A weld rescue converts a FAILED friction grasp into a reported pass,
+    # so the experiment rescues itself and the result means nothing. It also
+    # blinds the contact sensors, which is what made an earlier BIMANUAL CHECK
+    # vacuous. If the grasp cannot hold, the run should say so.
+    weld_rescue: false
+    # Slip thresholds, measured as movement of the object relative to the midpoint of
+    # the two hands. 5 mm is more than sensor noise and less than the 20 mm of finger
+    # clearance, so it is a real warning with room to react. 15 mm means the object is
+    # leaving the grip.
+    slip_warn_mm: 5.0
+    slip_abort_mm: 15.0
+    # How many times to open-and-reclose before calling the friction grasp failed.
+    regrasp_attempts: 2
+    # How much deeper to close on a regrasp. The fingers stall against the effort limit,
+    # so commanding further in raises the normal force up to that limit.
+    regrasp_deeper: 0.004
+    rotate_speed: 0.45
+    settle_tol: 0.08
+    dt_grasp: 2.0            # s per waypoint, empty-handed moves
+    dt_flip: 2.5             # s per waypoint, loaded rotation
+    dt_travel: 1.5           # s per waypoint, the planned paths to and from parked
+    # ALL TIMES ARE SIMULATED SECONDS. The node waits on /clock, so a laptop that simulates
+    # slower than real time just takes longer - it no longer sends the next move early.
+
+    # TWO objects at DIFFERENT axis angles. Three all lying tangential tested the
+    # same grasp three times, and left one branch of left_sign() never executed. The
+    # third object returns once two work.
+    order: [bottle, box]
+
+    # THE STATIC WORLD, for the path planner: every fixed solid the arms must keep clear of,
+    # written the way the world file writes a <box> - centre, yaw (deg), FULL size - so
+    # test_the_fixtures_are_the_world can check them against reorient.sdf. The two walls are
+    # the LiDAR's reference. A shelf or table is declared here the same way, and every
+    # object standing on it gets surface_z = its top.
+    fixtures: [back_wall, side_wall]
+    back_wall:
+      centre: [-0.46, 0.0, 0.45]
+      size: [0.02, 0.90, 0.90]
+      yaw: 0.0
+    side_wall:
+      centre: [-0.18, -0.46, 0.45]
+      size: [0.56, 0.02, 0.90]
+      yaw: 0.0
+
+    bottle:
+      # CROSS-SECTION. round -> the surface narrows with depth, so the distal
+      # phalanx must curl inward to stay in contact. flat -> the face is
+      # vertical and the pad already makes AREA contact over its full height,
+      # so curling can only dig in. At 0.637 rad a tip bites 2.0 mm into a
+      # 45 mm cylinder and 16.1 mm into a flat face - which is the 19 N wrist
+      # load and the 0/2 pads-touching seen on the box.
+      round: true
+      azimuth: 0.0           # deg - world heading the robot turns to
+      length: 0.240          # grip separation is DERIVED from this
+      # The object's axis in the WORLD frame. The grasp angle in the base frame is this
+      # minus the MEASURED heading, so drift cancels instead of becoming final tilt.
+      # 75 deg at azimuth 0 means it presents at 75 deg in the base frame - 15 deg off
+      # tangential, inside the +/-20 deg grasp envelope. The SDF spawn yaw is this plus
+      # 90, because a 90 deg roll lays the axis along -y at spawn yaw zero.
+      axis_yaw: 75.0
+      mass: 0.45             # kg, as in models/bottle/model.sdf
+      surface_z: 0.0         # lies on the floor
+      cz: 0.045
+      upright_cz: 0.12
+      half_width: 0.045      # radius across the closing axis
+      close: 0.048           # fingers now straddle the equator, so the binding width
+                             # is the full radius for every object of this diameter
+    box:
+      # CROSS-SECTION. round -> the surface narrows with depth, so the distal
+      # phalanx must curl inward to stay in contact. flat -> the face is
+      # vertical and the pad already makes AREA contact over its full height,
+      # so curling can only dig in. At 0.637 rad a tip bites 2.0 mm into a
+      # 45 mm cylinder and 16.1 mm into a flat face - which is the 19 N wrist
+      # load and the 0/2 pads-touching seen on the box.
+      round: false
+      azimuth: -55.0
+      length: 0.220
+      # 105 deg in the base frame, i.e. 15 deg off tangential the OTHER way, so the two
+      # objects bracket tangential and both branches of left_sign() are exercised.
+      axis_yaw: 50.0
+      mass: 0.50
+      surface_z: 0.0
+      cz: 0.045
+      upright_cz: 0.11
+      half_width: 0.045      # half the 90 mm face width
+      close: 0.048
+
+verify_node:
+  ros__parameters:
+    # TILT is the whole claim of this section, so it is tight now that the axis is
+    # measured rather than assumed - axis error used to become tilt one-for-one, which
+    # is why this was ever 20 degrees.
+    tilt_tol_deg: 8.0
+    # An object that moved 100 mm was dragged, not reoriented. 30 mm is what a clean
+    # stand-up costs.
+    move_tol: 0.030
+    settle_recheck_s: 2.0    # re-read the pose this long after release: a tippy object
+                             # can pass an instantaneous tilt check and then topple
+    title: SECTION B VERIFICATION
+    objects: [bottle, box]
+    # "where it started" is where Gazebo first reports each object, so no positions here
+    # expected standing height is surface_z + upright_cz - on its surface, not merely upright
+    bottle: {upright_cz: 0.12, surface_z: 0.0}
+    box: {upright_cz: 0.11, surface_z: 0.0}

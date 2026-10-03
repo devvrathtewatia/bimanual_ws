@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<!--
+  Kobuki-based dual-arm manipulator - SECTION A (fixed-base pick and place).
+
+  APPROVED CHANGES vs the original blueprint, and why:
+
+  * 5 DOF per arm.  A wrist ROLL (J5) was added about the end-effector
+    approach axis. On a 4-DOF arm the finger closing direction is not
+    independently controllable - it is dictated by where the hand must be - so
+    the grippers could only pinch objects lying at one particular orientation.
+    Because the roll axis passes through the grasp point it does not move the
+    hand, so the analytic IK is unchanged: solve position + pitch exactly as
+    before, then set roll independently.
+
+  * Elbow limit 115 -> 145 deg.  The old limit left a dead sphere of radius
+    0.174 m in front of each shoulder, right where the work happens. 145 deg
+    is what slim links plus a wrist servo can realistically fold to, and it
+    shrinks the dead zone to 0.096 m.
+
+  * Arm separation 17.75 -> 26 cm, shoulder height 18 -> 24 cm.  Gives each
+    arm an independent lateral lane and a more vertical approach to the floor.
+    Mounts sit at radius 0.143 m, still inside the 0.1775 m deck.
+
+  * GRASP TOPOLOGY: objects lie with their long axis ACROSS the arm reach
+    direction and each arm takes one end. Previously both hands were sent to
+    the centreline, which forced both arms to reach across it - so they shared
+    one volume and collided. Now each arm stays on its own side.
+
+  All vertical dimensions are ground-referenced: base_link sits at ground
+  level under the base centre, so every z reads as height above ground.
+-->
+<robot name="navigate_bimanual" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ==================== base ==================== -->
+  <xacro:property name="PI"             value="3.14159265358979"/>
+  <xacro:property name="base_radius"    value="0.1775"/>
+  <xacro:property name="base_body_z0"   value="0.020"/>
+  <xacro:property name="base_body_top"  value="0.125"/>
+  <xacro:property name="deck_top_z"     value="0.140"/>
+  <xacro:property name="wheel_radius"   value="0.038"/>
+  <xacro:property name="wheel_width"    value="0.030"/>
+  <xacro:property name="wheel_sep"      value="0.230"/>
+  <xacro:property name="caster_radius"  value="0.019"/>
+
+  <!-- ==================== arms ==================== -->
+  <xacro:property name="arm_mount_x"    value="0.080"/>
+  <xacro:property name="arm_mount_y"    value="0.120"/>   <!-- separation 0.24, mount radius 0.144 -->
+  <xacro:property name="shoulder_z"     value="0.240"/>
+  <!-- LINK LENGTHS 0.180, were 0.160. Reach was THE binding constraint on every
+       decision in this project and it forced a choice between two things that both
+       had to be true: the LIFT needed a small radius to stay inside 0.320 m, and
+       base clearance needed a large one to keep the hands off the chassis. At
+       L=0.160 the overlap was 4 mm wide, so a legitimate +/-10 mm aim correction
+       decided at random whether a cycle worked - one run the bottle failed and the
+       box passed for exactly that reason. Trading margin between the two was never
+       going to hold. 0.180 puts the reach limit at 0.360 and removes the conflict
+       rather than balancing it. IK is unchanged in form; only the constants move. -->
+  <xacro:property name="L1"             value="0.180"/>
+  <xacro:property name="L2"             value="0.180"/>
+  <xacro:property name="LG"             value="0.070"/>   <!-- wrist -> grasp point -->
+
+  <!-- joint limits -->
+  <xacro:property name="yaw_lim"        value="2.618"/>   <!-- +/-150 deg -->
+  <xacro:property name="pitch2_lim"     value="2.007"/>   <!-- +/-115 deg shoulder -->
+  <!-- J2b, the seventh axis. A roll needs a wide range to be useful as a
+       swivel; 175 deg keeps a stop short of the wrap so the joint never
+       has two equivalent commands. -->
+  <xacro:property name="roll2_lim" value="${175*PI/180}"/>
+  <xacro:property name="pitch3_lim"     value="2.531"/>   <!-- +/-145 deg ELBOW -->
+  <xacro:property name="wpitch_lim"     value="2.443"/>   <!-- +/-140 deg wrist pitch -->
+  <xacro:property name="wroll_lim"      value="3.14159"/> <!-- +/-180 deg wrist rolls -->
+  <xacro:property name="finger_travel"  value="0.065"/>
+
+  <!-- ==================== sensors ==================== -->
+  <xacro:property name="mast_x"         value="-0.100"/>
+  <!-- LIDAR HEIGHT. Was 0.46, which put it 20 mm ABOVE THE ROBOT'S OWN WRISTS
+       (z=0.440 at the travel pose, 0.26 m away) - inside the 0.15..1.60 m band the
+       wall fit accepts. So the scan contained the robot's own hands as "wall"
+       returns and the line fit reported rms 105 mm and was rejected. Because the
+       arms sit at fixed positions in the BASE frame, which wall's sector they fell
+       into changed as the robot turned, so wall A failed at some headings and wall B
+       at others - and face() then gave up after one open-loop turn and landed 23 deg
+       out. That is the "cannot rotate to the right angle" fault, and it was the
+       robot blinding itself.
+       The arms can reach z = 0.240 + 0.320 + 0.05 = 0.610 at full extension, so the
+       sensor goes above that with margin. -->
+  <xacro:property name="lidar_z" value="0.68"/>
+  <xacro:property name="cam_x"          value="-0.075"/>
+  <xacro:property name="cam_z"          value="0.420"/>
+  <xacro:property name="cam_pitch"      value="0.2618"/>
+
+  <!-- ==================== materials ==================== -->
+  <material name="dark_grey"><color rgba="0.15 0.15 0.15 1"/></material>
+  <material name="light_grey"><color rgba="0.6 0.6 0.6 1"/></material>
+  <material name="red_accent"><color rgba="0.7 0.1 0.1 1"/></material>
+  <material name="arm_blue"><color rgba="0.42 0.45 0.50 1"/></material>
+  <material name="black"><color rgba="0.05 0.05 0.05 1"/></material>
+
+  <xacro:include filename="$(find navigate_description)/urdf/base.xacro"/>
+  <xacro:include filename="$(find navigate_description)/urdf/mast_sensors.xacro"/>
+  <xacro:include filename="$(find navigate_description)/urdf/arm.xacro"/>
+  <xacro:include filename="$(find navigate_description)/urdf/ros2_control.xacro"/>
+  <xacro:include filename="$(find navigate_description)/urdf/gazebo_plugins.xacro"/>
+
+  <xacro:kobuki_base/>
+  <xacro:mast_sensors/>
+  <!-- FINGER FORCE IS DELIBERATELY ASYMMETRIC. The left hand grips the object at
+       its centre and carries it; the right hand only supports an end. Keeping the
+       support hand weak stops the two rigid grasps forming an over-constrained closed
+       chain that fights itself - see the note on the finger joint limit in arm.xacro. -->
+  <xacro:arm_6dof side="left"  reflect="1"  finger_effort="6.0"/>
+  <xacro:arm_6dof side="right" reflect="-1" finger_effort="1.5"/>
+  <xacro:bimanual_ros2_control/>
+  <xacro:bimanual_gazebo/>
+
+</robot>

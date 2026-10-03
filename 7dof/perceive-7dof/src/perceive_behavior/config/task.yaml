@@ -1,0 +1,132 @@
+# =============================================================================
+# SECTION C configuration - PERCEIVE: find each object, decide, stand it up.
+#
+# The same robot and the same stand-up as the reorient section - the task parameters below
+# are reorient's, key for key - with one difference that is the whole point: NOTHING here
+# says where an object is or which way it lies. Each object has only a rough bearing to
+# LOOK along (look_azimuth) and its model (size, shape, colour); the camera measures the
+# rest. The world file puts them where it likes.
+#
+# HEIGHTS FROM THE SURFACE, as in every section: surface_z is what an object lies on (the
+# floor here); cz and upright_cz are its centre heights above it, lying and standing.
+# Perception uses the same numbers to know which plane each resting state sits on.
+# =============================================================================
+
+perception_node:
+  ros__parameters:
+    # THE WORKSPACE CAMERA, in base_link. Must be the camera in mast_sensors.xacro -
+    # test_the_camera_config_is_the_urdf reads both.
+    cam_x: 0.05
+    cam_y: 0.0
+    cam_z: 0.62
+    cam_pitch: 1.244
+    horizontal_fov: 1.204
+    image_width: 640
+    image_height: 480
+    min_area: 250            # px; an object at 0.30 m covers 10 000 - 15 000
+    objects: [bottle, can, box]
+    # HSV windows (OpenCV: hue 0-180). Each is centred on the model's own colour and checked
+    # by test_the_colour_windows_contain_the_models, lit and in shade, and against the robot's
+    # own colours so an arm cannot be mistaken for an object.
+    bottle: {hsv_lo: [5, 150, 40], hsv_hi: [22, 255, 255], length: 0.240, half_width: 0.045, round: true, surface_z: 0.0}
+    can: {hsv_lo: [100, 110, 35], hsv_hi: [135, 255, 255], length: 0.200, half_width: 0.045, round: true, surface_z: 0.0}
+    box: {hsv_lo: [40, 90, 35], hsv_hi: [80, 255, 255], length: 0.220, half_width: 0.045, round: false, surface_z: 0.0}
+
+task_node:
+  ros__parameters:
+    reach: 0.30              # the stand-up's verified station - as in the reorient section
+    flip_z: 0.24             # object centre height during the rotation
+    hover_dz: 0.10
+    open_pos: 0.065
+    tilt_warn_deg: 1.5
+    tilt_abort_deg: 4.0
+    force_warn_n: 15.0
+    force_abort_n: 30.0
+    wall_band: [0.15, 1.60]  # LiDAR range window for the wall fit
+    wall_max_rms: 0.03       # reject a line fit worse than this
+    heading_tol: 0.004
+    place_drop: 0.010        # suction released this far above the surface
+    grasp_mode: suction      # the same grasp as the other sections
+    weld_rescue: false
+    slip_warn_mm: 5.0
+    slip_abort_mm: 15.0
+    regrasp_attempts: 2
+    regrasp_deeper: 0.004
+    rotate_speed: 0.45
+    settle_tol: 0.08
+    position_deadband: 0.025
+    drive_speed: 0.08
+    dt_grasp: 2.0            # s per waypoint, empty-handed moves
+    dt_flip: 2.5             # s per waypoint, loaded rotation
+    dt_travel: 1.5           # s per waypoint, the planned paths to and from parked
+    dt_look: 1.0             # s per point, the arms to and from the look pose
+    # ALL TIMES ARE SIMULATED SECONDS.
+    tilt_tol_deg: 8.0
+    move_tol: 0.030
+    settle_recheck_s: 2.0
+
+    # ---- perception ----
+    sense_frames: 5          # a MEDIAN of this many fresh frames, all taken after the
+                             # arms were out of view and the base had stopped
+    sense_timeout: 8.0       # simulated s to wait for them
+    max_axis_dev_deg: 20.0   # the stand-up's grasp envelope around tangential
+    square_on_deg: 1.0       # turn to face an object further off-centre than this
+    reach_window: 0.03       # an object further than this from reach is section D's job
+
+    order: [bottle, can, box]
+
+    # THE STATIC WORLD, for the path planner - the two LiDAR reference walls, exactly as in
+    # the reorient section; test_the_fixtures_are_the_world checks them against perceive.sdf.
+    fixtures: [back_wall, side_wall]
+    back_wall:
+      centre: [-0.46, 0.0, 0.45]
+      size: [0.02, 0.90, 0.90]
+      yaw: 0.0
+    side_wall:
+      centre: [-0.18, -0.46, 0.45]
+      size: [0.56, 0.02, 0.90]
+      yaw: 0.0
+
+    # NO POSITIONS AND NO AXIS ANGLES: where to look, and what it is.
+    bottle:
+      look_azimuth: 0.0      # deg - world heading to look along
+      length: 0.240
+      half_width: 0.045
+      round: true
+      mass: 0.45
+      surface_z: 0.0
+      cz: 0.045
+      upright_cz: 0.12
+      close: 0.048
+    can:
+      look_azimuth: 65.0
+      length: 0.200
+      half_width: 0.045
+      round: true
+      mass: 0.35
+      surface_z: 0.0
+      cz: 0.045
+      upright_cz: 0.10
+      close: 0.048
+    box:
+      look_azimuth: -65.0
+      length: 0.220
+      half_width: 0.045
+      round: false           # FLAT: the fingertips must not curl into its faces
+      mass: 0.50
+      surface_z: 0.0
+      cz: 0.045
+      upright_cz: 0.11
+      close: 0.048
+
+verify_node:
+  ros__parameters:
+    title: SECTION C VERIFICATION
+    tilt_tol_deg: 8.0
+    move_tol: 0.030
+    objects: [bottle, can, box]
+    # expected standing height is surface_z + upright_cz; "where it started" is where Gazebo
+    # first reports it, since nothing here says where anything is
+    bottle: {upright_cz: 0.12, surface_z: 0.0}
+    can: {upright_cz: 0.10, surface_z: 0.0}
+    box: {upright_cz: 0.11, surface_z: 0.0}

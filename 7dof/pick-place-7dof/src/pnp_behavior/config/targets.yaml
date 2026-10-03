@@ -1,0 +1,193 @@
+# =============================================================================
+# SECTION A task configuration.
+#
+# THE GRASP TARGET CONTRACT
+# -------------------------
+# Everything the manipulation code needs about an object is: where its centre
+# is, which way its long axis points, and how big it is. Section A supplies
+# that from this file. Section C will supply the same fields from perception,
+# and section D after driving to the object. The manipulation code consumes
+# the contract and does not change between sections.
+#
+# GEOMETRY OF THE LAYOUT
+# ----------------------
+# The base never translates - it only rotates in place. So every target is
+# described by the WORLD AZIMUTH the robot turns to face, plus a base-frame
+# reach. Once the robot faces a target, the object always sits on the base
+# centreline at (reach, 0), with its long axis lateral (90 deg in base frame).
+# That means every grasp in the task uses the same verified geometry.
+#
+# Objects sit at azimuths 0 / +55 / -55 deg so the arms cannot touch a
+# neighbouring object. Shelf slots sit at 130 / 180 / 230 deg, 0.25 m apart on
+# the arc - enough for the longest object lying tangentially - while keeping each
+# placement on the centreline, so neither arm ever has to reach across it.
+#
+# EVERY HEIGHT IS FROM A SURFACE (2026-09-28), the same as the reorient section:
+#   surface_z        what the object lies on to be picked - the floor, 0.0
+#   place_surface_z  what it is put on - the shelf's top, 0.100
+#   cz               its centre height ABOVE either surface when lying (half its width)
+# The shelf was 0.170 and is now 0.100: the height the reorient section is verified to
+# stand objects up on, so the two sections share one platform.
+# =============================================================================
+
+task_node:
+  ros__parameters:
+    reach: 0.30
+    # Hard ceiling on the aim radius. With L=0.180 the reach limit is 0.360, so the lift
+    # survives the full correction range and this is a backstop rather than a binding limit.
+    reach_max: 0.315
+    lift_z: 0.34             # object centre height while carried (m). Must clear what the
+                             # carried object sweeps over: objects lying on the floor, and
+                             # objects already on the shelf, whose tops are now at 0.190.
+    hover_dz: 0.10           # hover height above an object before descending
+    open_pos: 0.065          # finger open position (m per finger)
+                             # 0.065 - 0.006 finger half-thickness = 0.059
+                             # inner face, so 14 mm clearance while
+                             # descending onto a 0.045 m half-width object
+    rotate_speed: 0.30       # in-place rotation rate (rad/s). Slow: less wheel slip, so
+                             # less for the LiDAR heading fix to correct.
+    heading_tol: 0.004       # rad. Reachable because heading comes from the wall.
+    # PROTECTIVE STOP thresholds. Normal running is under about 5 N per wrist (a
+    # shared 0.45 kg object plus gripper weight) and roughly 56 N would tip the
+    # chassis, so 30 N aborts clear of both. Base tilt on flat ground is ~0. Derived,
+    # not measured - confirm against a run.
+    tilt_warn_deg: 1.5
+    tilt_abort_deg: 4.0
+    force_warn_n: 15.0
+    force_abort_n: 30.0
+    wall_band: [0.15, 1.60]  # range window the two reference walls fall in (m)
+    wall_max_rms: 0.03       # reject a wall fit worse than this (m)
+    position_deadband: 0.025 # below this, do not recentre at all - the direction of a
+                             # correction that small is measurement noise
+    drive_speed: 0.08        # m/s for the corrective strafe
+    place_drop: 0.016        # release this far above the resting height - 2 mm above the
+                             # barrier crest (0.1143 on the 0.10 shelf), so the object is a
+                             # free body before it can touch a chamfer. The remaining 16 mm
+                             # is the settle phase, fingers still closed.
+    settle_tol: 0.08         # joint convergence tolerance for a leg (rad); the arms are
+                             # additionally SETTLED to 0.004 rad before the fingers close
+    # ---- the grasp: THE SAME AS THE REORIENT SECTION ----
+    # suction: the cup on the left palm carries the load, the fingers close onto the object
+    # first (GRIP CHECK measures that), ease off the surface while carrying, and squeeze again
+    # before the release, so the settle is carried by friction. friction and weld remain
+    # available for comparison.
+    grasp_mode: suction
+    weld_rescue: false
+    slip_warn_mm: 5.0
+    slip_abort_mm: 15.0
+    regrasp_attempts: 2
+    regrasp_deeper: 0.004
+    # TIMING, in SIMULATED seconds - the node waits on /clock, so a laptop that simulates
+    # slower than real time just takes longer instead of sending the next move early.
+    # Waypoints are sampled 25 mm apart, so seconds-per-waypoint sets the hand speed: 1.0 and
+    # 0.7 give 25 and 36 mm/s. LOADED moves stay slower than empty ones on purpose.
+    dt_slow: 1.0             # seconds per waypoint, loaded moves  (25 mm/s)
+    dt_fast: 0.7             # seconds per waypoint, empty moves   (36 mm/s)
+    dt_travel: 1.5           # seconds per waypoint, the planned paths to and from parked
+
+    order: [bottle, can, box]
+
+    # THE STATIC WORLD, for the path planner: every fixed solid the arms must keep clear of,
+    # written the way the shelf model writes a <box> - centre, yaw (deg), FULL size - so
+    # test_the_fixtures_are_the_world can check them against models/shelf/model.sdf. The
+    # walls are the LiDAR's reference; ped1..3 are the shelf's three pedestals, whose tops
+    # are the place surface. (The 14 mm anti-roll ramps on each pedestal are not listed:
+    # only hands placing INTO a slot ever come near them, and the shelf-geometry tests
+    # cover that.)
+    fixtures: [back_wall, side_wall, ped1, ped2, ped3]
+    back_wall:
+      centre: [-0.46, 0.0, 0.45]
+      size: [0.02, 0.90, 0.90]
+      yaw: 0.0
+    side_wall:
+      centre: [-0.18, -0.46, 0.45]
+      size: [0.56, 0.02, 0.90]
+      yaw: 0.0
+    ped1:
+      centre: [-0.1928, 0.2298, 0.05]
+      size: [0.18, 0.32, 0.10]
+      yaw: 130.0
+    ped2:
+      centre: [-0.3, 0.0, 0.05]
+      size: [0.18, 0.32, 0.10]
+      yaw: 180.0
+    ped3:
+      centre: [-0.1928, -0.2298, 0.05]
+      size: [0.18, 0.32, 0.10]
+      yaw: 230.0
+
+    # THREE objects at DIFFERENT axis angles - 72, 96 and 108 deg in the base frame - so
+    # the grasp is exercised off tangential on both sides and one close to it.
+    bottle:
+      pick_azimuth: 0.0      # deg - world heading the robot turns to
+      place_azimuth: 130.0
+      length: 0.240          # the grip separation is DERIVED from this
+      # The object's axis in the WORLD frame. The grasp angle in the base frame is this
+      # minus the MEASURED heading, so heading error cancels rather than rotating the
+      # grasp. 72 deg at pick azimuth 0 is 18 deg off tangential, inside the +/-22 deg
+      # envelope. The SDF spawn yaw is this + 90 deg, because a cylinder is laid down by a
+      # 90 deg roll which puts its axis along -y at spawn yaw zero.
+      axis_yaw: 72.0
+      mass: 0.45             # kg, as in models/bottle/model.sdf
+      # CROSS-SECTION. round -> the surface narrows with depth, so the distal phalanx curls
+      # inward to stay in contact. flat -> the face is vertical, the pad already bears over
+      # its full height, and curling only digs in: 16.1 mm into a flat face at full curl.
+      # This node used to ignore it and curl the box's tips into its sides.
+      round: true
+      half_width: 0.045      # radius across the closing axis
+      surface_z: 0.0         # lies on the floor
+      place_surface_z: 0.10  # put on the shelf's top
+      cz: 0.045              # centre height above either surface, lying
+      close: 0.047           # finger position closed on it (m), from the WIDEST
+                             # point the finger plate can reach, not the width at
+                             # the grasp height - see E21
+      grip_dz: 0.025         # grasp this far ABOVE the object's axis so the palm
+                             # clears its top; must match motion.GRIP_DZ
+
+    can:
+      pick_azimuth: 55.0
+      place_azimuth: 180.0   # 180 sits on the angle wrap, so the shortest turn to it is
+                             # ambiguous by sign; face() converges either way.
+      length: 0.200
+      axis_yaw: 151.0        # 96 deg in the base frame
+      mass: 0.35
+      round: true
+      half_width: 0.045
+      surface_z: 0.0
+      place_surface_z: 0.10
+      cz: 0.045
+      close: 0.048           # fingers straddle the equator, so this is the full radius
+      grip_dz: 0.025
+
+    box:
+      pick_azimuth: -55.0
+      place_azimuth: 230.0
+      length: 0.220
+      axis_yaw: 53.0         # 108 deg in the base frame - 18 deg off tangential the other way
+      mass: 0.50
+      round: false           # FLAT: the fingertips must not curl into its faces
+      half_width: 0.045      # half the 90 mm face width
+      surface_z: 0.0
+      place_surface_z: 0.10
+      cz: 0.045
+      close: 0.048           # flat sides: same width at every height
+      grip_dz: 0.025
+
+verify_node:
+  ros__parameters:
+    reach: 0.30
+    # DIRECTIONAL TOLERANCES. A single circular tol_xy cannot express this problem:
+    # radially the cradle only gives 11 mm of clearance before the object rides a
+    # chamfer, while tangentially the pedestal is 0.32 long against an object of at
+    # most 0.24, so 40 mm is harmless.
+    tol_radial: 0.015
+    tol_tangential: 0.040
+    tol_z: 0.020
+    # The object must also END UP TANGENTIAL to its slot - that is the whole point of
+    # the yaw alignment, and the cradle chamfers only work if it is.
+    tol_yaw_deg: 12.0
+    objects: [bottle, can, box]
+    # expected resting height is place_surface_z + cz - ON the shelf, lying
+    bottle: {place_azimuth: 130.0, place_surface_z: 0.10, cz: 0.045}
+    can: {place_azimuth: 180.0, place_surface_z: 0.10, cz: 0.045}
+    box: {place_azimuth: 230.0, place_surface_z: 0.10, cz: 0.045}

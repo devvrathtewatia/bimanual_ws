@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- THE ARMS MUST LOAD ALREADY PARKED. Every arm joint used to start at 0.0, which
+       is both arms STRAIGHT OUT horizontally: each hand at (0.510, +/-0.120, 0.240),
+       r = 0.524 m, which is 0.35 m outside the base's own 0.1775 m radius. The first
+       thing the robot then had to do was haul them 126 deg back to the travel pose -
+       2.191 rad of error at j2 and 0.388 m of hand travel, as one step.
+
+       That transient is what destroyed the 2026-09-20 run. The proportional term
+       saturated the 12 N.m joint limit and the arm whipped: 36.8 N at the left wrist
+       with nothing in its hand, 4.4 s in, before the first cycle had even printed. The
+       protective stop then did as it was told and HELD POSITION, so the arms froze
+       still extended, having never reached the travel pose at all. face() went on to
+       rotate the base with two 0.52 m arms stuck out - a windmill. The bottle ended
+       3.153 m away, the base was shoved off its spot, and the LiDAR went from 165 wall
+       beams to 9, so every wall fit failed and the cycle aborted.
+
+       Starting AT the travel pose makes the first command a no-op, so there is no
+       transient to survive. This is correct at any gain; the high gain only made the
+       consequence violent. -->
+  <xacro:macro name="ctrl_joint" params="name init:=0.0">
+    <joint name="${name}">
+      <command_interface name="position"/>
+      <!-- POSITION ONLY. A velocity command interface was added alongside position to
+           give the trajectory's own velocity as feedforward, and it made tracking WORSE:
+           worst wrist errors went from 0.299/0.256/0.213 rad to 0.621/0.513/0.470.
+           gz_ros2_control applies BOTH a position target and a velocity target to the
+           same joint, so the two fight each other - that is not feedforward, it is two
+           controllers arguing. Real feedforward would need the hardware to accept it as
+           a feedforward term, which this plugin does not offer. -->      <state_interface name="position"><param name="initial_value">${init}</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="finger_if" params="name init:=0.060">
+    <joint name="${name}">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">${init}</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="bimanual_ros2_control">
+    <ros2_control name="GazeboSimSystem" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        <!-- joint velocity = gain * position error, proportional only.
+             1.9 validated in simulation; 1.0 is too slow to converge and 4.0+
+             saturates the joint velocity limit so the arm rings. Coupled with
+             joint damping 0.7 and update_rate 200 Hz: change them together. -->
+        <!-- GAIN 1.9, AND LEAVE IT THERE. This has now been changed three times and 1.9
+             is the only value that has ever behaved. 6.0 tracks about 3x better on
+             paper (right_j4 off 0.151 rad against 0.448) and that IS the reason the
+             right hand drifts off the object - but at 6.0 the arm RINGS: the base
+             shakes and the robot walks. Observed 2026-09-20, twice.
+             The comment this replaced already said "4.0+ saturates the joint velocity
+             limit so the arm rings". It was right and I overrode it on the strength of
+             the tracking numbers. The tracking problem is real but the gain is not the
+             lever - the fix is a second weld on the right palm so the object is
+             constrained by both hands and tracking error stops mattering. -->
+        <param name="position_proportional_gain">1.9</param>
+      </hardware>
+
+      <xacro:ctrl_joint name="left_j1" init="-0.6202"/>
+      <xacro:ctrl_joint name="left_j2" init="-1.9871"/>
+      <xacro:ctrl_joint name="left_j2b" init="0.0000"/>
+      <xacro:ctrl_joint name="left_j3" init="1.6451"/>
+      <xacro:ctrl_joint name="left_j4" init="0.0000"/>
+      <xacro:ctrl_joint name="left_j5" init="1.9129"/>
+      <xacro:ctrl_joint name="left_j6" init="-2.1910"/>
+      <xacro:ctrl_joint name="right_j1" init="0.6202"/>
+      <xacro:ctrl_joint name="right_j2" init="-1.9871"/>
+      <xacro:ctrl_joint name="right_j2b" init="0.0000"/>
+      <xacro:ctrl_joint name="right_j3" init="1.6451"/>
+      <xacro:ctrl_joint name="right_j4" init="0.0000"/>
+      <xacro:ctrl_joint name="right_j5" init="1.9129"/>
+      <xacro:ctrl_joint name="right_j6" init="-0.9505"/>
+
+      <xacro:finger_if name="left_finger_l_joint"/>
+      <xacro:finger_if name="left_finger_r_joint"/>
+      <xacro:finger_if name="right_finger_l_joint"/>
+      <xacro:finger_if name="right_finger_r_joint"/>
+      <!-- distal phalanges: commanded in step with the proximal closure -->
+      <xacro:finger_if name="left_finger_l_tip_joint"  init="0.0"/>
+      <xacro:finger_if name="left_finger_r_tip_joint"  init="0.0"/>
+      <xacro:finger_if name="right_finger_l_tip_joint" init="0.0"/>
+      <xacro:finger_if name="right_finger_r_tip_joint" init="0.0"/>
+    </ros2_control>
+  </xacro:macro>
+</robot>
