@@ -41,15 +41,6 @@ The final system was tested in ROS 2 Jazzy + Gazebo Harmonic. These short clips 
 | [Navigation](media/navigate-7dof_demo.mp4) | Driving to objects, standing them up and rescanning the room |
 
 > These are simulation recordings from the final 7DOF implementation.
-The idea in one picture
-
-   LOOK            DRIVE            GRIP             TURN            STAND
-
-    ◉ camera        ┌─┐            ┌─┐ ┌─┐          ┌─┐ ┌─┐            ┌─┐
-   ─┴─              │R│ ──►        │ ╲ ╱ │           ╲ │ │ ╱            │ │
-  [robot]  ▬▬▬      └─┘   ▬▬▬     [robot]▬▬▬         [robot]  ▌          [robot]  ▌
-  object lies      goes to it    both hands       90° in mid-air      set down, 
-  on its side                    hold both ends                       standing up
 
 Why two arms, and why seven joints?
 
